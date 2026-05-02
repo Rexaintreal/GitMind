@@ -1,0 +1,6 @@
+.env
+.gitmind/
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
