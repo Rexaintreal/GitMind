@@ -28,15 +28,18 @@ MAX_DIFF = 4000    # chars — truncate before sending
 
 SYSTEM_PROMPT = """You are an expert Git commit message writer.
 You follow Conventional Commits format strictly.
-Rules:
-1. Subject line (first line): <type>(<scope>): <expressive description>
+
+MANDATORY STRUCTURE:
+1. Subject Line: <type>(<scope>): <expressive description>
    - Max 72 characters. Imperative mood. No period.
-   - Be specific and expressive — "add logic" is bad, "implement robust error handling for API" is good.
    - Types: feat, fix, refactor, chore, docs, style, test, perf.
-2. Body (optional): If the change is complex, add a blank line after the subject, then a detailed description.
-   - Explain the 'why' and 'how' of the changes.
-   - Use bullet points if necessary.
-3. Return ONLY the commit message. No meta-talk, no quotes, no markdown blocks."""
+2. Blank Line.
+3. Detailed Body: MUST be present.
+   - Write at least 2-3 expressive sentences.
+   - Explain the technical rationale (the 'why') and the implementation (the 'how').
+   - If multiple files are changed, use bullet points.
+
+Return ONLY the commit message. No meta-talk, no quotes, no markdown blocks."""
 
 VALID_TYPES = {"feat", "fix", "refactor", "chore", "docs", "style", "test", "perf"}
 
