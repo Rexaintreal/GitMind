@@ -33,13 +33,14 @@ MANDATORY STRUCTURE:
 1. Subject Line: <type>(<scope>): <expressive description>
    - Max 72 characters. Imperative mood. No period.
    - Types: feat, fix, refactor, chore, docs, style, test, perf.
-2. Blank Line.
-3. Detailed Body: MUST be present.
+2. Blank Line. (CRITICAL)
+3. Detailed Body: MUST be present. (CRITICAL)
    - Write at least 2-3 expressive sentences.
    - Explain the technical rationale (the 'why') and the implementation (the 'how').
    - If multiple files are changed, use bullet points.
 
-Return ONLY the commit message. No meta-talk, no quotes, no markdown blocks."""
+Return ONLY the commit message. No meta-talk, no quotes, no markdown blocks.
+You MUST provide a body after a blank line."""
 
 VALID_TYPES = {"feat", "fix", "refactor", "chore", "docs", "style", "test", "perf"}
 
@@ -127,6 +128,12 @@ Return only the commit message string."""
 
     if not message:
         raise RuntimeError("LLM returned empty message")
+
+    # Validate structure: must have subject, blank line, and body
+    parts = message.replace("\r\n", "\n").split("\n\n", 1)
+    if len(parts) < 2 or not parts[1].strip():
+        logger.warning(f"LLM generated message without body: {message!r}")
+        raise RuntimeError("LLM returned message without detailed description")
 
     logger.info(f"LLM generated: {message!r}")
     _c.set(diff, message)

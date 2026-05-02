@@ -1,33 +1,88 @@
-# GitMind specific
+# =========================
+# GitMind (project-specific)
+# =========================
 .gitmind/
 Agent/.gitmind/
+
+# Environment variables
 .env
+.env.*
 Agent/.env
 
+# =========================
 # Python
+# =========================
 __pycache__/
 *.py[cod]
 *$py.class
 *.egg-info/
 .venv/
-env/
 venv/
+env/
 ENV/
+pip-log.txt
+pip-delete-this-directory.txt
 
-# Node.js / Extension
+# =========================
+# Node.js / TypeScript
+# =========================
 node_modules/
 Extension/gitmind/node_modules/
-Extension/gitmind/out/
-*.vsix
-.eslintcache
 
+# Build output
+out/
+Extension/gitmind/out/
+dist/
+build/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# =========================
 # VS Code
-.vscode-test/
+# =========================
 .vscode/
 !.vscode/launch.json
 !.vscode/tasks.json
 
-# OS
+# Extension-specific VS Code test env
+.vscode-test/
+Extension/gitmind/.vscode/
+
+# =========================
+# Packaging
+# =========================
+*.vsix
+
+# =========================
+# OS / System
+# =========================
 .DS_Store
 Thumbs.db
 *.swp
+*.swo
+
+# =========================
+# Misc
+# =========================
+.eslintcache
+coverage/
+
+# Ignore build output of VS Code extension
+Extension/gitmind/out/
+
+# Node modules
+node_modules/
+Extension/gitmind/node_modules/
+
+# Env files
+.env
+
+# Python cache
+__pycache__/
+
+# GitMind internal files
+.gitmind/

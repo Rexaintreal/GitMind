@@ -270,10 +270,43 @@ def command():
                     "message": "Push failed. Check terminal for details."
                 }), 500
 
+        elif action == "clear_cache":
+            from cache import get_cache
+            get_cache().clear()
+            log_activity("LLM cache cleared manually via command")
+            write_status_file()
+            return jsonify({"status": "cleared"}), 200
+
+        elif action == "set_tone":
+            tone = data.get("tone", "professional")
+            with _lock:
+                state["message_tone"] = tone
+            log_activity(f"Tone set to {tone}")
+            write_status_file()
+            return jsonify({"status": "tone_set", "tone": tone}), 200
+
+        elif action == "toggle_auto_mode":
+            with _lock:
+                state["auto_mode"] = not state["auto_mode"]
+                mode = "ON" if state["auto_mode"] else "OFF"
+            log_activity(f"Auto-commit mode turned {mode}")
+            write_status_file()
+            return jsonify({"status": "toggled", "auto_mode": state["auto_mode"]}), 200
+
+        elif action == "set_interval":
+            interval = int(data.get("interval", 300))
+            with _lock:
+                state["commit_interval"] = interval
+                # adjust next commit time if needed, simple approach: reset it
+                state["next_commit_in"] = interval
+            log_activity(f"Commit interval set to {interval}s")
+            write_status_file()
+            return jsonify({"status": "interval_set", "interval": interval}), 200
+
         else:
             return jsonify({
                 "error": "Unknown action",
-                "valid_actions": ["start", "stop", "pause", "commit_now"],
+                "valid_actions": ["start", "stop", "pause", "commit_now", "push", "clear_cache", "set_tone", "toggle_auto_mode", "set_interval"],
             }), 400
 
     except Exception as e:
@@ -791,7 +824,7 @@ def start(
     import signal, sys
 
     def _shutdown(sig, frame):
-        typer.echo("\n🛑 GitMind shutting down...")
+        typer.echo("\n[STOP] GitMind shutting down...")
         stop_watcher()
         stop_scheduler()
         sys.exit(0)
@@ -799,7 +832,7 @@ def start(
     signal.signal(signal.SIGINT,  _shutdown)
     signal.signal(signal.SIGTERM, _shutdown)
 
-    typer.echo("\n🔍 Running startup checks...")
+    typer.echo("\n[INIT] Running startup checks...")
 
     # Check 1: repo validity
     from git_ops import get_git_ops
