@@ -1,18 +1,31 @@
 {
   "name": "gitmind",
   "displayName": "GitMind",
-  "description": "Autonomous Git commit intelligence — analyze, group, and commit your changes automatically.",
+  "description": "Autonomous Git commit intelligence \u2014 analyze, group, and commit your changes automatically.",
   "version": "1.0.0",
   "publisher": "gitmind",
-  "engines": { "vscode": "^1.85.0" },
-  "categories": ["SCM Providers", "Other"],
-  "keywords": ["git", "commit", "automation", "ai", "autonomous"],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "SCM Providers",
+    "Other"
+  ],
+  "keywords": [
+    "git",
+    "commit",
+    "automation",
+    "ai",
+    "autonomous"
+  ],
   "icon": "media/gitmind-icon.png",
-  "activationEvents": ["onStartupFinished"],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "viewsContainers": {
-      "auxiliarybar": [
+      "activitybar": [
         {
           "id": "gitmind",
           "title": "GitMind",
@@ -31,34 +44,112 @@
       ]
     },
     "commands": [
-      { "command": "gitmind.start",          "title": "GitMind: Start Agent",            "icon": "$(play)" },
-      { "command": "gitmind.stop",           "title": "GitMind: Stop Agent",             "icon": "$(primitive-square)" },
-      { "command": "gitmind.pause",          "title": "GitMind: Pause / Resume",         "icon": "$(debug-pause)" },
-      { "command": "gitmind.commitNow",      "title": "GitMind: Commit Now",             "icon": "$(git-commit)" },
-      { "command": "gitmind.push",           "title": "GitMind: Push to Origin",         "icon": "$(cloud-upload)" },
-      { "command": "gitmind.toggleAutoMode", "title": "GitMind: Toggle Auto-Commit Mode" },
-      { "command": "gitmind.setTone",        "title": "GitMind: Set Commit Tone" },
-      { "command": "gitmind.amendFallbacks", "title": "GitMind: Amend Fallback Commits" },
-      { "command": "gitmind.clearCache",     "title": "GitMind: Clear LLM Cache" },
-      { "command": "gitmind.resetMemory",    "title": "GitMind: Reset Memory" },
-      { "command": "gitmind.restartAgent",   "title": "GitMind: Restart Agent",          "icon": "$(debug-restart)" },
-      { "command": "gitmind.showTerminal",   "title": "GitMind: Show Terminal",          "icon": "$(terminal)" },
-      { "command": "gitmind.showOutput",     "title": "GitMind: Show Output Panel" },
-      { "command": "gitmind.openSidebar",    "title": "GitMind: Open Sidebar" },
-      { "command": "gitmind.refresh",        "title": "GitMind: Refresh",                "icon": "$(refresh)" },
-      { "command": "gitmind.showStats",      "title": "GitMind: Show Stats" }
+      {
+        "command": "gitmind.start",
+        "title": "GitMind: Start Agent",
+        "icon": "$(play)"
+      },
+      {
+        "command": "gitmind.stop",
+        "title": "GitMind: Stop Agent",
+        "icon": "$(primitive-square)"
+      },
+      {
+        "command": "gitmind.pause",
+        "title": "GitMind: Pause / Resume",
+        "icon": "$(debug-pause)"
+      },
+      {
+        "command": "gitmind.commitNow",
+        "title": "GitMind: Commit Now",
+        "icon": "$(git-commit)"
+      },
+      {
+        "command": "gitmind.push",
+        "title": "GitMind: Push to Origin",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "gitmind.toggleAutoMode",
+        "title": "GitMind: Toggle Auto-Commit Mode"
+      },
+      {
+        "command": "gitmind.setTone",
+        "title": "GitMind: Set Commit Tone"
+      },
+      {
+        "command": "gitmind.amendFallbacks",
+        "title": "GitMind: Amend Fallback Commits"
+      },
+      {
+        "command": "gitmind.clearCache",
+        "title": "GitMind: Clear LLM Cache"
+      },
+      {
+        "command": "gitmind.resetMemory",
+        "title": "GitMind: Reset Memory"
+      },
+      {
+        "command": "gitmind.restartAgent",
+        "title": "GitMind: Restart Agent",
+        "icon": "$(debug-restart)"
+      },
+      {
+        "command": "gitmind.showTerminal",
+        "title": "GitMind: Show Terminal",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "gitmind.showOutput",
+        "title": "GitMind: Show Output Panel"
+      },
+      {
+        "command": "gitmind.openSidebar",
+        "title": "GitMind: Open Sidebar"
+      },
+      {
+        "command": "gitmind.refresh",
+        "title": "GitMind: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "gitmind.showStats",
+        "title": "GitMind: Show Stats"
+      }
     ],
     "menus": {
       "view/title": [
-        { "command": "gitmind.commitNow",    "when": "view == gitmind.sidebar", "group": "navigation@1" },
-        { "command": "gitmind.refresh",      "when": "view == gitmind.sidebar", "group": "navigation@2" },
-        { "command": "gitmind.showTerminal", "when": "view == gitmind.sidebar", "group": "navigation@3" },
-        { "command": "gitmind.restartAgent", "when": "view == gitmind.sidebar", "group": "navigation@4" }
+        {
+          "command": "gitmind.commitNow",
+          "when": "view == gitmind.sidebar",
+          "group": "navigation@1"
+        },
+        {
+          "command": "gitmind.refresh",
+          "when": "view == gitmind.sidebar",
+          "group": "navigation@2"
+        },
+        {
+          "command": "gitmind.showTerminal",
+          "when": "view == gitmind.sidebar",
+          "group": "navigation@3"
+        },
+        {
+          "command": "gitmind.restartAgent",
+          "when": "view == gitmind.sidebar",
+          "group": "navigation@4"
+        }
       ],
       "commandPalette": [
-        { "command": "gitmind.openSidebar" },
-        { "command": "gitmind.showOutput" },
-        { "command": "gitmind.restartAgent" }
+        {
+          "command": "gitmind.openSidebar"
+        },
+        {
+          "command": "gitmind.showOutput"
+        },
+        {
+          "command": "gitmind.restartAgent"
+        }
       ]
     },
     "configuration": {
@@ -89,20 +180,20 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "compile":           "tsc -p ./",
-    "watch":             "tsc -watch -p ./",
-    "pretest":           "npm run compile && npm run lint",
-    "lint":              "eslint src",
-    "test":              "vscode-test"
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src",
+    "test": "vscode-test"
   },
   "devDependencies": {
-    "@types/vscode":                       "^1.85.0",
-    "@types/node":                         "20.x",
-    "@typescript-eslint/eslint-plugin":    "^8.3.0",
-    "@typescript-eslint/parser":           "^8.3.0",
-    "@vscode/test-cli":                    "^0.0.10",
-    "@vscode/test-electron":               "^2.4.0",
-    "eslint":                              "^9.9.1",
-    "typescript":                          "^5.5.4"
+    "@types/vscode": "^1.85.0",
+    "@types/node": "20.x",
+    "@typescript-eslint/eslint-plugin": "^8.3.0",
+    "@typescript-eslint/parser": "^8.3.0",
+    "@vscode/test-cli": "^0.0.10",
+    "@vscode/test-electron": "^2.4.0",
+    "eslint": "^9.9.1",
+    "typescript": "^5.5.4"
   }
 }

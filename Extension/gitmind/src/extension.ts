@@ -97,8 +97,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   let lastHash: string | null = null;
   let lastCommand: string | null = null;
+  let suggestNotifPending = false;   // debounce: only one pending suggest notif at a time
 
-  agentEventStream.on('event', async (ev) => {
+  agentEventStream.on('event', async (ev: import('./agentClient').StreamEvent) => {
     switch (ev.type) {
       case 'connected':
         terminal.log('info', 'Live event stream connected.');
@@ -114,6 +115,36 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const payload = ev.data as SSEUpdatePayload;
         statusBar.updateFromSSE(payload);
         sidebar.updateFromSSE(payload);
+
+        // ── Suggest notification when auto_mode is off ────────────────────────
+        // The backend returns SUGGEST (no commit) when auto_mode=false.
+        // Surface a VS Code notification so the user knows changes are waiting.
+        if (
+          ev.type === 'update' &&
+          payload.running &&
+          !payload.paused &&
+          !payload.auto_mode &&
+          payload.next_commit_in === 0 &&   // timer just expired
+          !suggestNotifPending
+        ) {
+          suggestNotifPending = true;
+          vscode.window
+            .showInformationMessage(
+              `GitMind: ${payload.pending_changes ?? 'some'} pending change(s) ready to commit.`,
+              'Commit Now',
+              'Enable Auto-Mode',
+              'Dismiss'
+            )
+            .then(async (choice) => {
+              suggestNotifPending = false;
+              if (choice === 'Commit Now') {
+                vscode.commands.executeCommand('gitmind.commitNow');
+              } else if (choice === 'Enable Auto-Mode') {
+                await agentClient.toggleAutoMode();
+                vscode.window.showInformationMessage('GitMind: Auto-commit enabled.');
+              }
+            });
+        }
 
         if (ev.type === 'commit' && payload.last_commit_hash !== lastHash) {
           lastHash = payload.last_commit_hash;
@@ -153,11 +184,29 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           sidebar.notifyCommit(commitHash, cleanMsg);
 
           // ── Auto-push after auto-commit ───────────────────────────────────
+          // The backend (scheduler.py commit_cycle step 9) already auto-pushes
+          // immediately after each commit. The SSE commit event fires before
+          // that push completes, so pending_push is momentarily true even though
+          // the backend is already handling it. We wait 3s and only push from
+          // the extension side if the backend's push actually failed (still pending).
           const cfg = vscode.workspace.getConfiguration('gitmind');
           const autoPush = cfg.get<boolean>('autoPushOnCommit', true);
           if (autoPush && payload.pending_push) {
-            // Small delay so the commit notification appears first
-            setTimeout(() => doPush(/* silent */ true), 1500);
+            setTimeout(async () => {
+              try {
+                const s = await agentClient.status();
+                if (s.pending_push) {
+                  // Backend push failed — extension picks it up
+                  doPush(/* silent */ true);
+                } else {
+                  // Backend already pushed — update sidebar to clear banner
+                  sidebar.notifyPush();
+                }
+              } catch {
+                // Status fetch failed — try pushing anyway
+                doPush(/* silent */ true);
+              }
+            }, 3000);
           }
 
           // Refresh log panel

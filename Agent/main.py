@@ -892,6 +892,21 @@ def start(
                 typer.echo("   ✅ Auto-ignored .gitmind directory")
             except Exception as e:
                 typer.echo(f"   ⚠️  Failed to auto-commit .gitignore: {e}")
+
+        # Untrack .gitmind/ from the index if it was previously committed.
+        # git ignores .gitignore rules for files already in the index,
+        # so we must explicitly remove them from tracking (not from disk).
+        try:
+            tracked = ops.repo.git.ls_files(".gitmind")
+            if tracked.strip():
+                ops.repo.git.rm("-r", "--cached", "--ignore-unmatch", ".gitmind/")
+                try:
+                    ops.repo.git.commit(m="chore: stop tracking .gitmind directory")
+                    typer.echo("   ✅ Untracked .gitmind/ from git index")
+                except Exception:
+                    pass  # nothing to commit if rm --cached found nothing staged
+        except Exception as e:
+            typer.echo(f"   ⚠️  Could not untrack .gitmind/: {e}")
     else:
         typer.echo(f"   [WARN] No git repo at {path} -- commits will be skipped")
 

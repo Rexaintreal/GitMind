@@ -94,7 +94,14 @@ export class ProcessManager extends EventEmitter {
   }
 
   async restart(): Promise<void> {
+    // Suppress the auto-restart in _onExit while we do a manual restart.
+    // Without this, _onExit fires during _kill() and schedules its own _launch(),
+    // resulting in two concurrent processes.
+    this.intentionalStop = true;
+    this._clearTimers();
     await this._kill();
+    this.intentionalStop = false;
+    this.restartCount = 0;
     await this._launch();
   }
 
