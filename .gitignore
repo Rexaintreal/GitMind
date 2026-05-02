@@ -1,9 +1,33 @@
-node_modules/
-.vscode/
-*.vsix
-.env
+# GitMind specific
 .gitmind/
+Agent/.gitmind/
+.env
+Agent/.env
+
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
 *.egg-info/
-dist/
+.venv/
+env/
+venv/
+ENV/
+
+# Node.js / Extension
+node_modules/
+Extension/gitmind/node_modules/
+Extension/gitmind/out/
+*.vsix
+.eslintcache
+
+# VS Code
+.vscode-test/
+.vscode/
+!.vscode/launch.json
+!.vscode/tasks.json
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
