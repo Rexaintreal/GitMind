@@ -108,6 +108,24 @@ class GitOps:
             logger.error(f"commit failed: {e}")
             return None
 
+    def push(self) -> bool:
+        """Pushes current branch to remote origin. Returns True on success."""
+        if not self.is_valid():
+            return False
+        try:
+            # Check if remote exists
+            if not self.repo.remotes:
+                logger.warning("No remotes configured for this repo")
+                return False
+            
+            origin = self.repo.remote(name='origin')
+            origin.push()
+            logger.info("Pushed successfully to origin")
+            return True
+        except Exception as e:
+            logger.error(f"Push failed: {e}")
+            return False
+
     def get_recent_log(self, n: int = 20) -> List[Dict]:
         """Returns list of last n commits as dicts."""
         if not self.is_valid():

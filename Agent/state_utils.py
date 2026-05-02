@@ -39,6 +39,7 @@ state = {
     "last_commit": None,
     "last_commit_time": None,
     "last_commit_hash": None,
+    "pending_push": False,
 
     # Terminal echo (VS Code terminal panel reads this)
     "last_command": None,

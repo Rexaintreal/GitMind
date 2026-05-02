@@ -253,6 +253,23 @@ def command():
                         "message": "Changes staged — awaiting user approval",
                     }), 200
 
+        elif action == "push":
+            log_activity("Manual push triggered.")
+            ops = get_git_ops(state["repo_path"])
+            success = ops.push()
+            if success:
+                with _lock:
+                    state["pending_push"] = False
+                return jsonify({
+                    "status": "pushed",
+                    "message": "Successfully pushed to origin"
+                }), 200
+            else:
+                return jsonify({
+                    "status": "error",
+                    "message": "Push failed. Check terminal for details."
+                }), 500
+
         else:
             return jsonify({
                 "error": "Unknown action",
@@ -592,6 +609,7 @@ def stream():
                 "last_commit":      state["last_commit"],
                 "last_commit_hash": state["last_commit_hash"],
                 "streak_days":      state["streak_days"],
+                "pending_push":     state["pending_push"],
             }
         yield _sse_event(connected_payload, event="connected")
 
@@ -628,6 +646,7 @@ def stream():
                             "streak_days":      state["streak_days"],
                             "auto_mode":        state["auto_mode"],
                             "watcher_active":   state.get("watcher_active", False),
+                            "pending_push":     state["pending_push"],
                         }
 
                     if changed.get("last_commit_hash") is not None:

@@ -256,6 +256,7 @@ def commit_cycle(force: bool = False) -> bool:
         state["last_commit_hash"] = last_hash
         state["total_commits"] += 1
         state["pending_changes"] = 0
+        state["pending_push"] = True
         state["streak_days"] = ops.get_streak_days()
 
     logger.info(

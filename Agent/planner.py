@@ -63,17 +63,9 @@ class CommitPlanner:
 
             if is_available() and combined_diff:
                 try:
-                    prompt = f"""Generate a commit message for these changes.
-{tone_instruction}
-
-Change type: {group['type']}
-Files: {', '.join(group['files'])}
-Summary: {group.get('summary', '')}
-Code diff (truncated):
-{combined_diff}
-
-Return ONLY the commit message. Max 72 chars. No explanation."""
-                    message = call_llm(prompt, max_tokens=100).strip()[:72]
+                    # Use the centralized generation logic from llm.py
+                    # which handles the mandatory body and expressive titles.
+                    message = generate_message(combined_diff)
                     source = "llm"
                 except RuntimeError:
                     message = self._fallback_message(group)
