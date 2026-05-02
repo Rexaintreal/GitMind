@@ -117,9 +117,39 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     border-bottom: 1px solid var(--vscode-panel-border);
   }
   .commit-item:last-child { border-bottom: none; }
-  .commit-msg { font-size: 12px; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .commit-meta { font-size: 10px; color: var(--vscode-descriptionForeground); }
+  .commit-msg {
+    font-size: 12px;
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .commit-meta { font-size: 10px; color: var(--vscode-descriptionForeground); display: flex; gap: 6px; flex-wrap: wrap; }
   .hash { font-family: monospace; color: var(--vscode-textLink-foreground); }
+  .ai-badge {
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: #8957e522;
+    color: #bc8cff;
+    border: 1px solid #8957e544;
+    font-weight: 600;
+  }
+  .ins { color: #3fb950; }
+  .del { color: #f85149; }
+  .last-cmd {
+    font-family: monospace;
+    font-size: 10px;
+    color: var(--vscode-textLink-foreground);
+    background: var(--vscode-editor-background);
+    padding: 4px 8px;
+    border-radius: 4px;
+    margin-top: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border: 1px solid var(--vscode-panel-border);
+  }
 </style>
 </head>
 <body>
@@ -131,16 +161,21 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     <span class="countdown" id="countdown">--:--</span>
   </div>
   <div class="sub" id="last-commit-msg">No commits yet</div>
+  <div class="last-cmd" id="last-cmd" style="display:none"></div>
 </div>
 
 <div class="stats-row">
   <div class="stat">
     <div class="stat-num" id="pending">0</div>
-    <div class="stat-label">Pending changes</div>
+    <div class="stat-label">Pending</div>
   </div>
   <div class="stat">
     <div class="stat-num" id="streak">0</div>
     <div class="stat-label">Day streak 🔥</div>
+  </div>
+  <div class="stat">
+    <div class="stat-num" id="total-commits">0</div>
+    <div class="stat-label">Commits</div>
   </div>
 </div>
 
@@ -160,6 +195,17 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   const vscode = acquireVsCodeApi();
   function send(command) { vscode.postMessage({ command }); }
 
+  function formatTime(iso) {
+    try {
+      const d = new Date(iso);
+      const diff = Math.floor((Date.now() - d) / 1000);
+      if (diff < 60) { return diff + 's ago'; }
+      if (diff < 3600) { return Math.floor(diff/60) + 'm ago'; }
+      if (diff < 86400) { return Math.floor(diff/3600) + 'h ago'; }
+      return Math.floor(diff/86400) + 'd ago';
+    } catch { return iso; }
+  }
+
   window.addEventListener('message', e => {
     const { type, status, log } = e.data;
     if (type !== 'update') { return; }
@@ -167,11 +213,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const badge = document.getElementById('status-badge');
     const countdown = document.getElementById('countdown');
     const lastMsg = document.getElementById('last-commit-msg');
+    const lastCmd = document.getElementById('last-cmd');
 
     if (!status) {
       badge.className = 'badge badge-offline';
       badge.textContent = 'Offline';
       countdown.textContent = '--:--';
+      lastCmd.style.display = 'none';
       return;
     }
 
@@ -181,18 +229,39 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const m = Math.floor(status.next_commit_in / 60);
     const s = String(status.next_commit_in % 60).padStart(2, '0');
     countdown.textContent = m + 'm ' + s + 's';
+
     lastMsg.textContent = status.last_commit || 'No commits yet';
+
+    if (status.last_command) {
+      lastCmd.style.display = 'block';
+      lastCmd.textContent = '$ ' + status.last_command;
+    } else {
+      lastCmd.style.display = 'none';
+    }
 
     document.getElementById('pending').textContent = status.pending_changes ?? '0';
     document.getElementById('streak').textContent = status.streak_days ?? '0';
 
-    if (log && log.commits && log.commits.length > 0) {
-      document.getElementById('commit-list').innerHTML = log.commits.slice(0, 8).map(c =>
-        '<div class="commit-item">' +
-          '<div class="commit-msg">' + c.message + '</div>' +
-          '<div class="commit-meta"><span class="hash">' + c.hash + '</span> · ' + c.time + ' · ' + (c.files_changed ?? 0) + ' files</div>' +
-        '</div>'
-      ).join('');
+    if (log && log.commits) {
+      document.getElementById('total-commits').textContent = log.commits.length;
+
+      if (log.commits.length > 0) {
+        document.getElementById('commit-list').innerHTML = log.commits.slice(0, 10).map(c => {
+          const aiTag = c.is_gitmind ? '<span class="ai-badge">AI</span>' : '';
+          const ins = c.insertions ? '<span class="ins">+' + c.insertions + '</span>' : '';
+          const del = c.deletions ? '<span class="del">-' + c.deletions + '</span>' : '';
+          return '<div class="commit-item">' +
+            '<div class="commit-msg">' + aiTag + ' ' + c.message + '</div>' +
+            '<div class="commit-meta">' +
+              '<span class="hash">' + c.hash + '</span>' +
+              '<span>' + formatTime(c.time) + '</span>' +
+              '<span>' + (c.files_changed ?? 0) + ' files</span>' +
+              ins + del +
+              '<span style="color:var(--vscode-descriptionForeground)">' + (c.author || '') + '</span>' +
+            '</div>' +
+          '</div>';
+        }).join('');
+      }
     }
   });
 </script>
