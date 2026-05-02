@@ -1,6 +1,8 @@
 .env
 .gitmind/
 __pycache__/
-*.pyc
-*.egg-info/
+*.py[cod]
+node_modules/
 dist/
+venv/
+.venv/
