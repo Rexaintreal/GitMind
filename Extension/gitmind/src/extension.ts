@@ -1,26 +1,61 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
+import { createStatusBar } from './statusBar';
+import { sendCommand } from './agentClient';
+import { echoInfo } from './terminal';
 
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
+    console.log('GitMind is now active');
 
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "gitmind" is now active!');
+    createStatusBar(context);
 
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with registerCommand
-	// The commandId parameter must match the command field in package.json
-	const disposable = vscode.commands.registerCommand('gitmind.helloWorld', () => {
-		// The code you place here will be executed every time your command is executed
-		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from GitMind!');
-	});
+    // Start command — asks for interval first
+    context.subscriptions.push(
+        vscode.commands.registerCommand('gitmind.start', async () => {
+            const input = await vscode.window.showInputBox({
+                prompt: 'Auto-commit every X minutes',
+                value: '5',
+                validateInput: v => isNaN(Number(v)) ? 'Enter a number' : null
+            });
+            if (!input) { return; }
+            await sendCommand('start', { interval_minutes: Number(input) });
+            echoInfo('Agent started — committing every ' + input + ' minutes');
+            vscode.window.showInformationMessage(`GitMind started ✓ — committing every ${input} min`);
+        })
+    );
 
-	context.subscriptions.push(disposable);
+    // Stop command
+    context.subscriptions.push(
+        vscode.commands.registerCommand('gitmind.stop', async () => {
+            await sendCommand('stop');
+            echoInfo('Agent stopped');
+            vscode.window.showInformationMessage('GitMind stopped');
+        })
+    );
+
+    // Pause command
+    context.subscriptions.push(
+        vscode.commands.registerCommand('gitmind.pause', async () => {
+            await sendCommand('pause');
+            echoInfo('Agent paused');
+            vscode.window.showInformationMessage('GitMind paused');
+        })
+    );
+
+    // Commit now command
+    context.subscriptions.push(
+        vscode.commands.registerCommand('gitmind.commitNow', async () => {
+            await sendCommand('commit_now');
+            echoInfo('Manual commit triggered');
+            vscode.window.showInformationMessage('GitMind — committing now...');
+        })
+    );
+
+    // Placeholder for status bar click
+    context.subscriptions.push(
+        vscode.commands.registerCommand('gitmind.showPanel', () => {
+            vscode.window.showInformationMessage('GitMind panel coming soon!');
+        })
+    );
 }
 
-// This method is called when your extension is deactivated
 export function deactivate() {}
