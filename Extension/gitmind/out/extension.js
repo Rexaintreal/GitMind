@@ -39,9 +39,12 @@ const vscode = __importStar(require("vscode"));
 const statusBar_1 = require("./statusBar");
 const agentClient_1 = require("./agentClient");
 const terminal_1 = require("./terminal");
+const sidebar_1 = require("./sidebar");
 function activate(context) {
     console.log('GitMind is now active');
     (0, statusBar_1.createStatusBar)(context);
+    const sidebarProvider = new sidebar_1.SidebarProvider(context.extensionUri);
+    context.subscriptions.push(vscode.window.registerWebviewViewProvider('gitmind.sidebar', sidebarProvider));
     // Start command — asks for interval first
     context.subscriptions.push(vscode.commands.registerCommand('gitmind.start', async () => {
         const input = await vscode.window.showInputBox({

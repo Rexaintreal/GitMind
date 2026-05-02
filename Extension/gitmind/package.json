@@ -13,29 +13,33 @@
     "onStartupFinished"
 ],
   "main": "./out/extension.js",
-  "contributes": {
+"contributes": {
     "commands": [
-        {
-            "command": "gitmind.start",
-            "title": "GitMind: Start"
-        },
-        {
-            "command": "gitmind.stop",
-            "title": "GitMind: Stop"
-        },
-        {
-            "command": "gitmind.pause",
-            "title": "GitMind: Pause"
-        },
-        {
-            "command": "gitmind.commitNow",
-            "title": "GitMind: Commit Now"
-        },
-        {
-            "command": "gitmind.showPanel",
-            "title": "GitMind: Show Panel"
-        }
-    ]
+        { "command": "gitmind.start", "title": "GitMind: Start" },
+        { "command": "gitmind.stop", "title": "GitMind: Stop" },
+        { "command": "gitmind.pause", "title": "GitMind: Pause" },
+        { "command": "gitmind.commitNow", "title": "GitMind: Commit Now" },
+        { "command": "gitmind.showPanel", "title": "GitMind: Show Panel" }
+    ],
+    "viewsContainers": {
+        "activitybar": [
+            {
+                "id": "gitmind-sidebar",
+                "title": "GitMind",
+                "icon": "media/gitmind-icon.svg"
+            }
+        ]
+    },
+    "views": {
+        "gitmind-sidebar": [
+            {
+                "icon": "media/gitmind-icon.svg",
+                "type": "webview",
+                "id": "gitmind.sidebar",
+                "name": "GitMind"
+            }
+        ]
+    }
 },
   "scripts": {
     "vscode:prepublish": "npm run compile",
