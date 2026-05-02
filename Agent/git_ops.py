@@ -7,6 +7,10 @@ from typing import Optional, List, Dict
 
 logger = logging.getLogger("gitmind.git_ops")
 
+# The entry we always ensure exists in .gitignore
+GITMIND_GITIGNORE_ENTRY = ".gitmind/"
+
+
 class GitOps:
     def __init__(self, repo_path: str):
         self.repo_path = str(pathlib.Path(repo_path).resolve())
@@ -27,19 +31,52 @@ class GitOps:
     def is_valid(self) -> bool:
         return self.repo is not None
 
+    def ensure_gitignore(self) -> bool:
+        """Ensure .gitmind/ is listed in the repo's .gitignore.
+        Creates the file if it doesn't exist. Returns True if a change was made."""
+        if not self.is_valid():
+            return False
+        try:
+            gitignore_path = pathlib.Path(self.repo.working_dir) / ".gitignore"
+
+            # Read existing content (or start fresh)
+            if gitignore_path.exists():
+                content = gitignore_path.read_text(encoding="utf-8")
+            else:
+                content = ""
+
+            # Check if already present (any reasonable variant)
+            lines = content.splitlines()
+            already_present = any(
+                line.strip() in (".gitmind", ".gitmind/", ".gitmind/*")
+                for line in lines
+            )
+
+            if already_present:
+                logger.debug(".gitignore already contains .gitmind — skipping")
+                return False
+
+            # Append the entry
+            separator = "\n" if content and not content.endswith("\n") else ""
+            new_content = content + separator + "\n# GitMind internal files\n" + GITMIND_GITIGNORE_ENTRY + "\n"
+            gitignore_path.write_text(new_content, encoding="utf-8")
+            logger.info(f"Added {GITMIND_GITIGNORE_ENTRY!r} to .gitignore")
+            return True
+
+        except Exception as e:
+            logger.error(f"ensure_gitignore failed: {e}")
+            return False
+
     def get_diff(self) -> str:
         """Returns unified diff of all unstaged + staged changes."""
         if not self.is_valid():
             return ""
         try:
-            # unstaged vs index
             unstaged = self.repo.git.diff()
-            # staged vs HEAD (catch error if no HEAD/no commits)
             try:
                 staged = self.repo.git.diff("--cached")
             except Exception:
                 staged = ""
-            
             combined = "\n".join(filter(None, [unstaged, staged]))
             logger.debug(f"Diff: {len(combined)} chars")
             return combined
@@ -57,7 +94,7 @@ class GitOps:
             try:
                 staged = len(self.repo.index.diff("HEAD"))
             except Exception:
-                staged = 0  # empty repo has no HEAD
+                staged = 0
             total = modified + untracked + staged
             logger.debug(f"Pending: {modified} modified, {untracked} untracked, {staged} staged")
             return total
@@ -96,14 +133,13 @@ class GitOps:
                 return None
 
             self.repo.index.commit(message)
-            
-            # Use try-except for head access in case of detached state or initial commit issues
+
             try:
                 short_hash = self.repo.head.commit.hexsha[:7]
                 logger.info(f"Committed {short_hash}: {message}")
                 return short_hash
             except Exception:
-                return "unknown" # Initial commit edge case
+                return "unknown"
         except Exception as e:
             logger.error(f"commit failed: {e}")
             return None
@@ -113,11 +149,10 @@ class GitOps:
         if not self.is_valid():
             return False
         try:
-            # Check if remote exists
             if not self.repo.remotes:
                 logger.warning("No remotes configured for this repo")
                 return False
-            
+
             origin = self.repo.remote(name='origin')
             origin.push()
             logger.info("Pushed successfully to origin")
@@ -132,12 +167,11 @@ class GitOps:
             return []
         try:
             result = []
-            # iter_commits might raise if there are zero commits
             try:
                 commits = list(self.repo.iter_commits(max_count=n))
             except Exception:
                 return []
-                
+
             for c in commits:
                 result.append({
                     "hash": c.hexsha[:7],
@@ -179,7 +213,6 @@ class GitOps:
                 "time": datetime.datetime.fromtimestamp(c.committed_date).isoformat()
             }
         except Exception:
-            # Likely empty repo or detached head
             return None
 
     def get_streak_days(self) -> int:
@@ -191,7 +224,7 @@ class GitOps:
                 commits = list(self.repo.iter_commits())
             except Exception:
                 return 0
-                
+
             if not commits:
                 return 0
 
@@ -201,7 +234,6 @@ class GitOps:
             ), reverse=True)
 
             today = datetime.date.today()
-            # Streak must include today or yesterday to be considered active
             if commit_dates[0] < today - datetime.timedelta(days=1):
                 return 0
 
@@ -218,7 +250,9 @@ class GitOps:
             logger.error(f"get_streak_days failed: {e}")
             return 0
 
+
 _instance: Optional[GitOps] = None
+
 
 def get_git_ops(repo_path: str = ".") -> GitOps:
     global _instance

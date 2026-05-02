@@ -1,62 +1,103 @@
 {
   "name": "gitmind",
   "displayName": "GitMind",
-  "description": "AI-powered git assistant for VS Code",
-  "version": "0.0.1",
-  "engines": {
-    "vscode": "^1.118.0"
-  },
-  "categories": [
-    "Other"
-  ],
-  "activationEvents": [
-    "onStartupFinished"
-],
+  "description": "Autonomous Git commit intelligence — analyze, group, and commit your changes automatically.",
+  "version": "1.0.0",
+  "publisher": "gitmind",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["SCM Providers", "Other"],
+  "keywords": ["git", "commit", "automation", "ai", "autonomous"],
+  "icon": "media/gitmind-icon.png",
+  "activationEvents": ["onStartupFinished"],
   "main": "./out/extension.js",
-"contributes": {
-    "commands": [
-        { "command": "gitmind.start", "title": "GitMind: Start" },
-        { "command": "gitmind.stop", "title": "GitMind: Stop" },
-        { "command": "gitmind.pause", "title": "GitMind: Pause" },
-        { "command": "gitmind.commitNow", "title": "GitMind: Commit Now" },
-        { "command": "gitmind.showPanel", "title": "GitMind: Show Panel" }
-    ],
+  "contributes": {
     "viewsContainers": {
-        "activitybar": [
-            {
-                "id": "gitmind-sidebar",
-                "title": "GitMind",
-                "icon": "media/gitmind-icon.svg"
-            }
-        ]
+      "activitybar": [
+        {
+          "id": "gitmind",
+          "title": "GitMind",
+          "icon": "media/gitmind-icon.svg"
+        }
+      ]
     },
     "views": {
-        "gitmind-sidebar": [
-            {
-                "icon": "media/gitmind-icon.svg",
-                "type": "webview",
-                "id": "gitmind.sidebar",
-                "name": "GitMind"
-            }
-        ]
+      "gitmind": [
+        {
+          "type": "webview",
+          "id": "gitmind.sidebar",
+          "name": "GitMind Agent",
+          "icon": "media/gitmind-icon.svg"
+        }
+      ]
+    },
+    "commands": [
+      { "command": "gitmind.start",          "title": "GitMind: Start Agent",            "icon": "$(play)" },
+      { "command": "gitmind.stop",           "title": "GitMind: Stop Agent",             "icon": "$(primitive-square)" },
+      { "command": "gitmind.pause",          "title": "GitMind: Pause / Resume",         "icon": "$(debug-pause)" },
+      { "command": "gitmind.commitNow",      "title": "GitMind: Commit Now",             "icon": "$(git-commit)" },
+      { "command": "gitmind.push",           "title": "GitMind: Push to Origin",         "icon": "$(cloud-upload)" },
+      { "command": "gitmind.toggleAutoMode", "title": "GitMind: Toggle Auto-Commit Mode" },
+      { "command": "gitmind.setTone",        "title": "GitMind: Set Commit Tone" },
+      { "command": "gitmind.amendFallbacks", "title": "GitMind: Amend Fallback Commits" },
+      { "command": "gitmind.clearCache",     "title": "GitMind: Clear LLM Cache" },
+      { "command": "gitmind.resetMemory",    "title": "GitMind: Reset Memory" },
+      { "command": "gitmind.restartAgent",   "title": "GitMind: Restart Agent",          "icon": "$(debug-restart)" },
+      { "command": "gitmind.showTerminal",   "title": "GitMind: Show Terminal",          "icon": "$(terminal)" },
+      { "command": "gitmind.showOutput",     "title": "GitMind: Show Output Panel" },
+      { "command": "gitmind.openSidebar",    "title": "GitMind: Open Sidebar" },
+      { "command": "gitmind.refresh",        "title": "GitMind: Refresh",                "icon": "$(refresh)" },
+      { "command": "gitmind.showStats",      "title": "GitMind: Show Stats" }
+    ],
+    "menus": {
+      "view/title": [
+        { "command": "gitmind.commitNow",    "when": "view == gitmind.sidebar", "group": "navigation@1" },
+        { "command": "gitmind.refresh",      "when": "view == gitmind.sidebar", "group": "navigation@2" },
+        { "command": "gitmind.showTerminal", "when": "view == gitmind.sidebar", "group": "navigation@3" },
+        { "command": "gitmind.restartAgent", "when": "view == gitmind.sidebar", "group": "navigation@4" }
+      ],
+      "commandPalette": [
+        { "command": "gitmind.openSidebar" },
+        { "command": "gitmind.showOutput" },
+        { "command": "gitmind.restartAgent" }
+      ]
+    },
+    "configuration": {
+      "title": "GitMind",
+      "properties": {
+        "gitmind.pythonPath": {
+          "type": "string",
+          "default": "",
+          "description": "Explicit path to python3 binary. Leave empty to auto-detect (uses VS Code Python extension, then PATH)."
+        },
+        "gitmind.agentDir": {
+          "type": "string",
+          "default": "",
+          "description": "Override path to the Agent folder (containing main.py). Leave empty for auto-detection."
+        },
+        "gitmind.autoStart": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically start the GitMind agent when VS Code opens."
+        }
+      }
     }
-},
+  },
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
-    "pretest": "npm run compile && npm run lint",
-    "lint": "eslint src",
-    "test": "vscode-test"
+    "compile":           "tsc -p ./",
+    "watch":             "tsc -watch -p ./",
+    "pretest":           "npm run compile && npm run lint",
+    "lint":              "eslint src",
+    "test":              "vscode-test"
   },
   "devDependencies": {
-    "@types/vscode": "^1.118.0",
-    "@types/mocha": "^10.0.10",
-    "@types/node": "22.x",
-    "typescript-eslint": "^8.56.1",
-    "eslint": "^9.39.3",
-    "typescript": "^5.9.3",
-    "@vscode/test-cli": "^0.0.12",
-    "@vscode/test-electron": "^2.5.2"
+    "@types/vscode":                       "^1.85.0",
+    "@types/node":                         "20.x",
+    "@typescript-eslint/eslint-plugin":    "^8.3.0",
+    "@typescript-eslint/parser":           "^8.3.0",
+    "@vscode/test-cli":                    "^0.0.10",
+    "@vscode/test-electron":               "^2.4.0",
+    "eslint":                              "^9.9.1",
+    "typescript":                          "^5.5.4"
   }
 }

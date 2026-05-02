@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 GitMind Agent Brain — Flask Server
 Routes, CLI entry point. State and helpers live in state_utils.py.
@@ -27,6 +28,14 @@ from watcher import (
 )
 
 load_dotenv()
+
+# Force UTF-8 stdout/stderr on Windows (cp1252 cannot encode emoji/arrows)
+import sys as _sys
+if hasattr(_sys.stdout, 'reconfigure'):
+    _sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if hasattr(_sys.stderr, 'reconfigure'):
+    _sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 
 # ─── LOGGING SETUP ───────────────────────────────────────────────────────────
 
@@ -171,7 +180,7 @@ def command():
     try:
         data = request.get_json(force=True, silent=True) or {}
         action = data.get("action", "")
-        interval = int(data.get("interval", 300))
+        interval = int(data.get("interval", state["commit_interval"]))
         path = data.get("path", ".")
 
         if action == "start":
@@ -193,6 +202,10 @@ def command():
                 log_activity(
                     f"Git repo valid. {state['pending_changes']} pending changes."
                 )
+                # Ensure .gitmind/ is in .gitignore
+                changed = ops.ensure_gitignore()
+                if changed:
+                    log_activity("Added .gitmind/ to .gitignore")
 
             start_scheduler()
             obs = start_watcher(path)
@@ -239,6 +252,18 @@ def command():
                         "hash": state["last_commit_hash"],
                         "message": state["last_commit"],
                     }
+                # Auto-push after manual commit_now as well
+                try:
+                    ops_push = get_git_ops(state["repo_path"])
+                    push_ok = ops_push.push()
+                    if push_ok:
+                        with _lock:
+                            state["pending_push"] = False
+                        log_activity(f"Auto-pushed after manual commit: {state['last_commit_hash']}")
+                    else:
+                        log_activity("Auto-push skipped — no remote or push failed", "warning")
+                except Exception as push_err:
+                    logger.warning(f"Auto-push after commit_now failed: {push_err}")
                 return jsonify(resp), 200
             else:
                 ops = get_git_ops(state["repo_path"])
@@ -839,26 +864,32 @@ def start(
     ops = get_git_ops(path)
     if ops.is_valid():
         pending = ops.get_pending_count()
-        typer.echo(f"   ✅ Git repo: {ops.repo.working_dir}")
-        typer.echo(f"   📁 Pending changes: {pending}")
+        typer.echo(f"   [OK] Git repo: {ops.repo.working_dir}")
+        typer.echo(f"   [OK] Pending changes: {pending}")
         with _lock:
             state["repo_path"] = ops.repo.working_dir
+        # Ensure .gitmind/ is in .gitignore
+        gitignore_changed = ops.ensure_gitignore()
+        if gitignore_changed:
+            typer.echo("   [OK] Added .gitmind/ to .gitignore")
+        else:
+            typer.echo("   [OK] .gitignore already has .gitmind/")
     else:
-        typer.echo(f"   ⚠️  No git repo at {path} — commits will be skipped")
+        typer.echo(f"   [WARN] No git repo at {path} -- commits will be skipped")
 
     # Check 2: LLM availability
     from llm import is_available as llm_available
     if llm_available():
-        typer.echo("   ✅ LLM: unclosed.ai reachable")
+        typer.echo("   [OK] LLM: unclosed.ai reachable")
     else:
-        typer.echo("   ⚠️  LLM: unreachable — fallback messages will be used")
+        typer.echo("   [WARN] LLM: unreachable -- fallback messages will be used")
 
     # Check 3: env var
     from llm import API_KEY
     if not API_KEY:
-        typer.echo("   ⚠️  UNCLOSED_API_KEY not set in .env")
+        typer.echo("   [WARN] UNCLOSED_API_KEY not set in .env")
     else:
-        typer.echo(f"   ✅ API key: set ({API_KEY[:6]}...)")
+        typer.echo(f"   [OK] API key: set ({API_KEY[:6]}...)")
 
     typer.echo("")
 
@@ -867,13 +898,13 @@ def start(
     restored = boot_restore()
     if restored:
         typer.echo(
-            f"   ✅ Memory restored: "
+            f"   [OK] Memory restored: "
             f"{state['total_commits']} commits, "
             f"streak={state['streak_days']}d, "
             f"auto_mode={state['auto_mode']}"
         )
     else:
-        typer.echo("   ℹ️  No previous memory — starting fresh")
+        typer.echo("   [INFO] No previous memory -- starting fresh")
 
     typer.echo("[GitMind] Agent Brain starting...")
     typer.echo(f"   Watching : {path}")

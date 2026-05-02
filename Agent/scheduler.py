@@ -126,40 +126,24 @@ def commit_cycle(force: bool = False) -> bool:
         return False
 
     # STEP 3 — Check for changes
-    diff = ops.get_diff()
-    if not diff or ops.is_clean():
+    file_count = ops.get_pending_count()
+    if file_count == 0:
         logger.debug("commit_cycle: nothing to commit")
         with _lock:
             state["pending_changes"] = 0
         return False
 
-    # STEP 4 — Decision logic (mirrors /decide route)
-    file_count = ops.get_pending_count()
-
+    # STEP 4 — Decision logic
     with _lock:
-        time_gap = state["commit_interval"] - state["next_commit_in"]
         auto_mode = state["auto_mode"]
-        rejection_rate = state["rejection_rate"]
-
-    AUTO_COMMIT_FILES = 10
-    AUTO_COMMIT_TIME = 1200
-    SUGGEST_FILES = 3
 
     if not auto_mode:
         action = "SUGGEST"
         reason = "Auto mode off"
-    elif rejection_rate > 0.5:
-        action = "SUGGEST"
-        reason = "High rejection rate"
-    elif file_count >= AUTO_COMMIT_FILES and time_gap >= AUTO_COMMIT_TIME:
-        action = "AUTO_COMMIT"
-        reason = f"{file_count} files, {time_gap}s gap"
-    elif file_count >= SUGGEST_FILES:
-        action = "SUGGEST"
-        reason = "Moderate changes"
     else:
-        action = "WAIT"
-        reason = "Too few changes"
+        # If auto_mode is ON and there are changes when timer fires, we should commit!
+        action = "AUTO_COMMIT"
+        reason = f"Timer expired with {file_count} changes"
 
     logger.info(f"commit_cycle decision: {action} — {reason} (force={force})")
 
@@ -173,6 +157,21 @@ def commit_cycle(force: bool = False) -> bool:
                 state["pending_changes"] = file_count
             logger.info("commit_cycle: SUGGEST — waiting for user approval")
             return False
+
+    # If we decided to commit (AUTO_COMMIT or force=True):
+    # STEP 5 — Stage everything first! This ensures untracked files appear in the diff.
+    with _lock:
+        state["last_command"] = "git add -A"
+
+    staged = ops.stage_all()
+    if not staged:
+        logger.error("commit_cycle: staging failed")
+        return False
+
+    diff = ops.get_diff()
+    if not diff:
+        logger.debug("commit_cycle: diff empty even after staging (e.g. only empty directories)")
+        return False
 
     # STEP 5 — Analyze diff and generate semantic commit plan
     try:
@@ -219,15 +218,7 @@ def commit_cycle(force: bool = False) -> bool:
         }]
         used_fallback = True
 
-    # STEP 6 — Stage and commit (UPDATED to handle multiple commits)
-    with _lock:
-        state["last_command"] = "git add -A"
-
-    staged = ops.stage_all()
-    if not staged:
-        logger.error("commit_cycle: staging failed")
-        return False
-
+    # STEP 6 — Commit
     committed_count = 0
     last_hash = None
     last_message = None
@@ -277,7 +268,22 @@ def commit_cycle(force: bool = False) -> bool:
         except Exception as e:
             logger.error(f"Amend loop error: {e}")
 
-    # STEP 9 — Write status file for extension fallback
+    # STEP 9 — Auto-push to origin (best-effort, non-blocking)
+    try:
+        push_ok = ops.push()
+        if push_ok:
+            with _lock:
+                state["pending_push"] = False
+            logger.info("commit_cycle: auto-pushed to origin")
+            log_activity(f"Auto-pushed: {commit_hash}")
+        else:
+            logger.warning("commit_cycle: auto-push failed (no remote or network error)")
+            log_activity("Auto-push skipped — no remote or push failed", "warning")
+    except Exception as e:
+        logger.error(f"commit_cycle: auto-push exception: {e}")
+        log_activity(f"Auto-push error: {e}", "warning")
+
+    # STEP 10 — Write status file for extension fallback
     log_activity(
         f"Auto-commit: {commit_hash} — {primary_message}"
         + (" [fallback]" if used_fallback else "")
