@@ -28,8 +28,11 @@ export class GitMindSidebarProvider implements vscode.WebviewViewProvider {
 
     webviewView.webview.html = this._getHtml();
 
-    // Handle messages from webview → extension
     webviewView.webview.onDidReceiveMessage((msg: { command: string; data?: unknown }) => {
+      if (msg.command === 'setTimer') {
+        vscode.commands.executeCommand('gitmind.start');
+        return;
+      }
       vscode.commands.executeCommand(`gitmind.${msg.command}`, msg.data);
     });
 
@@ -605,6 +608,12 @@ export class GitMindSidebarProvider implements vscode.WebviewViewProvider {
           <path fill-rule="evenodd" d="M1.705 8.005a.75.75 0 01.834.656 5.5 5.5 0 009.592 2.97l-1.204-1.204a.25.25 0 01.177-.427h3.646a.25.25 0 01.25.25v3.646a.25.25 0 01-.427.177l-1.38-1.38A7.002 7.002 0 011.05 8.84a.75.75 0 01.656-.834zM8 2.5a5.487 5.487 0 00-4.131 1.869l1.204 1.204A.25.25 0 014.896 6H1.25A.25.25 0 011 5.75V2.104a.25.25 0 01.427-.177l1.38 1.38A7.002 7.002 0 0114.95 7.16a.75.75 0 11-1.49.178A5.5 5.5 0 008 2.5z"/>
         </svg>
         Restart
+      </button>
+      <button class="btn btn-secondary" onclick="send('setTimer')" title="Change commit interval">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+          <path fill-rule="evenodd" d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM0 8a8 8 0 1116 0A8 8 0 010 8zm8-3a.75.75 0 01.75.75v2.53l1.78 1.78a.75.75 0 11-1.06 1.06l-2-2A.75.75 0 017.25 8V5.75A.75.75 0 018 5z"/>
+        </svg>
+        Set Timer
       </button>
     </div>
     <div class="btn-grid" style="margin-top:5px">

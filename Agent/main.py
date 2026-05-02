@@ -864,16 +864,34 @@ def start(
     ops = get_git_ops(path)
     if ops.is_valid():
         pending = ops.get_pending_count()
-        typer.echo(f"   [OK] Git repo: {ops.repo.working_dir}")
-        typer.echo(f"   [OK] Pending changes: {pending}")
+        typer.echo(f"   ✅ Git repo: {ops.repo.working_dir}")
+        typer.echo(f"   📁 Pending changes: {pending}")
         with _lock:
             state["repo_path"] = ops.repo.working_dir
-        # Ensure .gitmind/ is in .gitignore
-        gitignore_changed = ops.ensure_gitignore()
-        if gitignore_changed:
-            typer.echo("   [OK] Added .gitmind/ to .gitignore")
+
+        # Auto-inject and commit .gitignore for .gitmind/
+        import pathlib
+        gitignore_path = pathlib.Path(ops.repo.working_dir) / ".gitignore"
+        needs_commit = False
+        if gitignore_path.exists():
+            with open(gitignore_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            if ".gitmind" not in content:
+                with open(gitignore_path, "a", encoding="utf-8") as f:
+                    f.write("\n\n# GitMind Agent state\n.gitmind/\n")
+                needs_commit = True
         else:
-            typer.echo("   [OK] .gitignore already has .gitmind/")
+            with open(gitignore_path, "w", encoding="utf-8") as f:
+                f.write("# GitMind Agent state\n.gitmind/\n")
+            needs_commit = True
+
+        if needs_commit:
+            try:
+                ops.repo.git.add(".gitignore")
+                ops.repo.git.commit(m="chore: auto-ignore .gitmind directory")
+                typer.echo("   ✅ Auto-ignored .gitmind directory")
+            except Exception as e:
+                typer.echo(f"   ⚠️  Failed to auto-commit .gitignore: {e}")
     else:
         typer.echo(f"   [WARN] No git repo at {path} -- commits will be skipped")
 
