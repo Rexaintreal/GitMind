@@ -19,7 +19,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         webviewView.webview.onDidReceiveMessage(async (msg) => {
             switch (msg.command) {
                 case 'start':
-                    await sendCommand('start');
+                    const folders = vscode.workspace.workspaceFolders;
+                    const rootPath = folders && folders.length > 0 ? folders[0].uri.fsPath : '.';
+                    await sendCommand('start', { path: rootPath });
                     break;
                 case 'stop':
                     await sendCommand('stop');
@@ -64,6 +66,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline' 'unsafe-eval';">
 <style>
   :root {
     --bg-color: #0d1117;
