@@ -27,20 +27,23 @@ TIMEOUT = 10       # seconds — hard limit per spec
 MAX_DIFF = 4000    # chars — truncate before sending
 
 SYSTEM_PROMPT = """You are an expert Git commit message writer.
-You follow Conventional Commits format strictly.
+Use Conventional Commits format: <type>(<scope>): <description>
 
-MANDATORY STRUCTURE:
-1. Subject Line: <type>(<scope>): <expressive description>
-   - Max 72 characters. Imperative mood. No period.
-   - Types: feat, fix, refactor, chore, docs, style, test, perf.
-2. Blank Line. (CRITICAL)
-3. Detailed Body: MUST be present. (CRITICAL)
-   - Write at least 2-3 expressive sentences.
-   - Explain the technical rationale (the 'why') and the implementation (the 'how').
-   - If multiple files are changed, use bullet points.
+Types: feat, fix, refactor, chore, docs, style, test, perf.
+Subject line: max 72 chars, imperative mood, no period.
 
-Return ONLY the commit message. No meta-talk, no quotes, no markdown blocks.
-You MUST provide a body after a blank line."""
+After the subject, leave ONE blank line, then write 2-3 sentences explaining:
+- What changed and why
+- Any notable implementation details
+
+Example:
+feat(auth): add JWT refresh token rotation
+
+Implements automatic rotation of refresh tokens on each use to reduce
+the window of token theft. Tokens are stored hashed in Redis with a
+7-day TTL. Old tokens are immediately invalidated on rotation.
+
+Return ONLY the commit message. No markdown fences, no quotes."""
 
 VALID_TYPES = {"feat", "fix", "refactor", "chore", "docs", "style", "test", "perf"}
 
@@ -129,11 +132,21 @@ Return only the commit message string."""
     if not message:
         raise RuntimeError("LLM returned empty message")
 
-    # Validate structure: must have subject, blank line, and body
+    # Validate structure: must have subject line + body separated by blank line.
+    # Some models (e.g. qwen3-coder) return only the subject. Instead of falling
+    # back to rule_based_message, auto-synthesise a minimal body from the subject
+    # so we still get a real commit message rather than "[gitmind-fallback]".
     parts = message.replace("\r\n", "\n").split("\n\n", 1)
     if len(parts) < 2 or not parts[1].strip():
-        logger.warning(f"LLM generated message without body: {message!r}")
-        raise RuntimeError("LLM returned message without detailed description")
+        subject = parts[0].strip()
+        logger.warning(f"LLM returned subject-only, synthesising body: {subject!r}")
+        # Derive a minimal body: expand the subject into a sentence
+        # and note that this was auto-expanded.
+        body_lines = [
+            f"Applied changes as described in the commit subject.",
+            f"No additional context was provided by the model; body auto-generated.",
+        ]
+        message = subject + "\n\n" + "\n".join(body_lines)
 
     logger.info(f"LLM generated: {message!r}")
     _c.set(diff, message)
