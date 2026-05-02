@@ -8,10 +8,10 @@
  *  4. AgentEventStream drives all UI updates (no polling)
  *  5. On deactivate → stop stream, kill process cleanly
  *
- * Changes:
- *  - Rich commit confirmation toast via sidebar + VS Code notification
- *  - Auto-push after every auto-commit (configurable)
- *  - .gitignore injection handled by backend on start
+ * Interval persistence:
+ *  - Default: 3600s (1 hour)
+ *  - Stored per-workspace via context.workspaceState so each project keeps its own setting
+ *  - Automatically used on every auto-start; shown in sidebar UI
  */
 
 import * as vscode from 'vscode';
@@ -21,9 +21,24 @@ import { GitMindStatusBar } from './statusBar';
 import { GitMindSidebarProvider } from './sidebar';
 import { GitMindTerminal } from './terminal';
 
+// ─── Interval config ──────────────────────────────────────────────────────────
+
+const INTERVAL_KEY     = 'gitmind.commitInterval';
+const DEFAULT_INTERVAL = 3600; // 1 hour in seconds
+
 // ─── Activation ──────────────────────────────────────────────────────────────
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+
+  // ── Interval helpers (scoped to this activation) ──────────────────────────
+  function getInterval(): number {
+    return context.workspaceState.get<number>(INTERVAL_KEY, DEFAULT_INTERVAL);
+  }
+
+  async function setInterval(seconds: number): Promise<void> {
+    await context.workspaceState.update(INTERVAL_KEY, seconds);
+    sidebar.updateInterval(seconds);
+  }
 
   // ── Output channel ────────────────────────────────────────────────────────
   const outputChannel = vscode.window.createOutputChannel('GitMind', { log: true });
@@ -58,13 +73,42 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     agentClient.setPort(port);
     terminal.onAgentEvent('started', pm['_workspacePath']?.() ?? '');
 
+    // Push saved interval to sidebar immediately so the UI shows it
+    sidebar.updateInterval(getInterval());
+
+    let agentRunning = false;
     try {
       const s = await agentClient.status();
       applyStatus(s, statusBar, sidebar, terminal, null);
-      lastHash = s.last_commit_hash;
+      lastHash    = s.last_commit_hash;
       lastCommand = s.last_command;
+      agentRunning = s.running;
     } catch {
       // Non-fatal — SSE will catch up
+    }
+
+    // ── Auto-start / re-sync interval ────────────────────────────────────
+    // Always call start() when the process becomes ready — even if the
+    // agent reports running=true (which it does immediately on spawn
+    // because main.py sets running=True in the CLI startup block).
+    // This is the only place the workspace-saved interval is pushed to
+    // the agent; skipping it means the agent uses its CLI default (300s)
+    // instead of the user's saved setting after every restart.
+    const cfg = vscode.workspace.getConfiguration('gitmind');
+    if (cfg.get<boolean>('autoStart', true)) {
+      const repoPath = workspacePath();
+      if (repoPath) {
+        const interval = getInterval();
+        outputChannel.appendLine(
+          `[AutoStart] watching ${repoPath} every ${fmtInterval(interval)}`
+          + (agentRunning ? ' (re-syncing interval after restart)' : '')
+        );
+        try {
+          await agentClient.start(repoPath, interval);
+        } catch (e) {
+          outputChannel.appendLine(`[AutoStart] failed: ${errMsg(e)}`);
+        }
+      }
     }
 
     refreshLog();
@@ -97,7 +141,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   let lastHash: string | null = null;
   let lastCommand: string | null = null;
-  let suggestNotifPending = false;   // debounce: only one pending suggest notif at a time
+  let suggestNotifPending = false;
 
   agentEventStream.on('event', async (ev: import('./agentClient').StreamEvent) => {
     switch (ev.type) {
@@ -116,15 +160,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         statusBar.updateFromSSE(payload);
         sidebar.updateFromSSE(payload);
 
-        // ── Suggest notification when auto_mode is off ────────────────────────
-        // The backend returns SUGGEST (no commit) when auto_mode=false.
-        // Surface a VS Code notification so the user knows changes are waiting.
+        // Suggest notification when auto_mode is off and timer just expired
         if (
           ev.type === 'update' &&
           payload.running &&
           !payload.paused &&
           !payload.auto_mode &&
-          payload.next_commit_in === 0 &&   // timer just expired
+          payload.next_commit_in === 0 &&
           !suggestNotifPending
         ) {
           suggestNotifPending = true;
@@ -148,29 +190,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
         if (ev.type === 'commit' && payload.last_commit_hash !== lastHash) {
           lastHash = payload.last_commit_hash;
-          const commitMsg = payload.last_commit ?? '';
+          const commitMsg  = payload.last_commit ?? '';
           const commitHash = payload.last_commit_hash ?? '';
           const isFallback = commitMsg.includes('[gitmind-fallback]');
-          const cleanMsg = commitMsg.replace('[gitmind-fallback]', '').trim();
+          const cleanMsg   = commitMsg.replace('[gitmind-fallback]', '').trim();
 
           terminal.onCommit(commitHash, commitMsg, isFallback);
 
-          // ── Rich commit confirmation notification ─────────────────────────
-          const shortMsg = cleanMsg.length > 60
-            ? cleanMsg.slice(0, 57) + '…'
-            : cleanMsg;
-
-          const notifMsg = isFallback
+          const shortMsg  = cleanMsg.length > 60 ? cleanMsg.slice(0, 57) + '…' : cleanMsg;
+          const notifMsg  = isFallback
             ? `⚡ GitMind committed [fallback] ${commitHash}`
             : `✔ GitMind committed ${commitHash}`;
 
           vscode.window
-            .showInformationMessage(
-              notifMsg,
-              { detail: shortMsg },
-              'Push Now',
-              'View Log'
-            )
+            .showInformationMessage(notifMsg, { detail: shortMsg }, 'Push Now', 'View Log')
             .then(async (choice) => {
               if (choice === 'Push Now') {
                 await doPush();
@@ -180,36 +213,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
               }
             });
 
-          // Also notify the sidebar webview so it shows its own toast
           sidebar.notifyCommit(commitHash, cleanMsg);
 
-          // ── Auto-push after auto-commit ───────────────────────────────────
-          // The backend (scheduler.py commit_cycle step 9) already auto-pushes
-          // immediately after each commit. The SSE commit event fires before
-          // that push completes, so pending_push is momentarily true even though
-          // the backend is already handling it. We wait 3s and only push from
-          // the extension side if the backend's push actually failed (still pending).
-          const cfg = vscode.workspace.getConfiguration('gitmind');
-          const autoPush = cfg.get<boolean>('autoPushOnCommit', true);
+          const cfgPush = vscode.workspace.getConfiguration('gitmind');
+          const autoPush = cfgPush.get<boolean>('autoPushOnCommit', true);
           if (autoPush && payload.pending_push) {
             setTimeout(async () => {
               try {
                 const s = await agentClient.status();
                 if (s.pending_push) {
-                  // Backend push failed — extension picks it up
                   doPush(/* silent */ true);
                 } else {
-                  // Backend already pushed — update sidebar to clear banner
                   sidebar.notifyPush();
                 }
               } catch {
-                // Status fetch failed — try pushing anyway
                 doPush(/* silent */ true);
               }
             }, 3000);
           }
 
-          // Refresh log panel
           refreshLog();
         }
         break;
@@ -265,21 +287,36 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const commands: Array<[string, () => void | Promise<void>]> = [
 
+    // gitmind.start — picks repo, prompts for interval (pre-filled with saved value),
+    // saves the new interval per-workspace, then tells the agent to start watching.
     ['gitmind.start', async () => {
       const repoPath = await pickRepoPath();
       if (!repoPath) { return; }
 
+      const saved = getInterval();
       const intervalStr = await vscode.window.showInputBox({
-        prompt: 'Commit interval in seconds',
-        value: '300',
-        validateInput: (v) =>
-          isNaN(Number(v)) || Number(v) < 10 ? 'Must be ≥ 10' : null,
+        title:       'GitMind — Commit interval',
+        prompt:      `Seconds between auto-commits (current: ${fmtInterval(saved)})`,
+        value:       String(saved),
+        placeHolder: '3600',
+        validateInput: (v) => {
+          const n = Number(v);
+          if (isNaN(n) || !Number.isInteger(n) || n < 10) {
+            return 'Must be a whole number ≥ 10';
+          }
+          return null;
+        },
       });
       if (!intervalStr) { return; }
 
+      const interval = Number(intervalStr);
+      await setInterval(interval); // persist per-workspace + push to sidebar
+
       try {
-        await agentClient.start(repoPath, Number(intervalStr));
-        vscode.window.showInformationMessage(`GitMind started — watching ${repoPath}`);
+        await agentClient.start(repoPath, interval);
+        vscode.window.showInformationMessage(
+          `GitMind started — watching ${repoPath} every ${fmtInterval(interval)}`
+        );
       } catch (e) {
         vscode.window.showErrorMessage(`GitMind start failed: ${errMsg(e)}`);
       }
@@ -311,10 +348,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const r = await agentClient.commitNow();
         if (r.status === 'committed') {
           const shortHash = r.hash ?? '?';
-          const msg = r.message ?? '';
-          const shortMsg = msg.length > 55 ? msg.slice(0, 52) + '…' : msg;
+          const msg       = r.message ?? '';
+          const shortMsg  = msg.length > 55 ? msg.slice(0, 52) + '…' : msg;
 
-          // Show rich notification with action buttons
           vscode.window
             .showInformationMessage(
               `✔ Committed ${shortHash}`,
@@ -333,10 +369,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
           sidebar.notifyCommit(shortHash, msg);
 
-          // Auto-push if enabled
           const cfg = vscode.workspace.getConfiguration('gitmind');
-          const autoPush = cfg.get<boolean>('autoPushOnCommit', true);
-          if (autoPush) {
+          if (cfg.get<boolean>('autoPushOnCommit', true)) {
             setTimeout(() => doPush(true), 1500);
           }
 
@@ -468,7 +502,7 @@ async function pickRepoPath(): Promise<string | undefined> {
   const folders = vscode.workspace.workspaceFolders;
   if (!folders || folders.length === 0) {
     return vscode.window.showInputBox({
-      prompt: 'Path to git repository',
+      prompt:      'Path to git repository',
       placeHolder: '/path/to/repo',
     });
   }
@@ -482,6 +516,11 @@ async function pickRepoPath(): Promise<string | undefined> {
   return pick?.fsPath;
 }
 
+/** Synchronous path lookup for auto-start (no UI needed). */
+function workspacePath(): string | undefined {
+  return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+}
+
 function applyStatus(
   s: AgentStatus,
   statusBar: GitMindStatusBar,
@@ -491,6 +530,20 @@ function applyStatus(
 ): void {
   statusBar.update(s);
   sidebar.updateStatus(s);
+}
+
+/** Format seconds as a human-readable string, e.g. 3600 → "1h", 90 → "1m 30s" */
+export function fmtInterval(s: number): string {
+  if (s < 60)   { return `${s}s`; }
+  if (s < 3600) {
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return r === 0 ? `${m}m` : `${m}m ${r}s`;
+  }
+  const h = Math.floor(s / 3600);
+  const rem = s % 3600;
+  const m = Math.floor(rem / 60);
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
 }
 
 function errMsg(e: unknown): string {

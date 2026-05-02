@@ -189,7 +189,7 @@ def command():
                 state["paused"] = False
                 state["repo_path"] = path
                 state["commit_interval"] = interval
-                state["next_commit_in"] = interval
+                state["next_commit_in"] = interval  # always reset — handles restart case
 
             # Validate repo immediately on start
             ops = get_git_ops(path)

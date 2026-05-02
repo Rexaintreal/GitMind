@@ -1,7 +1,7 @@
 /**
  * sidebar.ts
  *
- * Webview sidebar. GitHub-styled dark UI.
+ * Webview sidebar — redesigned UI with auto-commit toggle.
  * Accepts both full AgentStatus and SSEUpdatePayload.
  * All state is pushed in; the sidebar never fetches anything itself.
  */
@@ -36,7 +36,6 @@ export class GitMindSidebarProvider implements vscode.WebviewViewProvider {
       vscode.commands.executeCommand(`gitmind.${msg.command}`, msg.data);
     });
 
-    // Re-send last known state when the webview becomes visible
     webviewView.onDidChangeVisibility(() => {
       if (webviewView.visible && this.lastStatus) {
         this._post('status', this.lastStatus);
@@ -66,14 +65,17 @@ export class GitMindSidebarProvider implements vscode.WebviewViewProvider {
     this._post('processState', { state: s });
   }
 
-  /** Show commit confirmation toast inside the sidebar webview */
   notifyCommit(hash: string, message: string): void {
     this._post('commitConfirm', { hash, message });
   }
 
-  /** Clear the pending-push banner after a successful push */
   notifyPush(): void {
     this._post('pushConfirm', {});
+  }
+
+  /** Push the saved commit interval (seconds) to the webview */
+  updateInterval(seconds: number): void {
+    this._post('interval', { seconds });
   }
 
   private _post(type: string, payload: unknown): void {
@@ -91,27 +93,28 @@ export class GitMindSidebarProvider implements vscode.WebviewViewProvider {
 <title>GitMind</title>
 <style>
   :root {
-    --gh-bg:          #0d1117;
-    --gh-surface:     #161b22;
-    --gh-border:      #30363d;
-    --gh-border-muted:#21262d;
-    --gh-text:        #e6edf3;
-    --gh-text-muted:  #7d8590;
-    --gh-text-subtle: #484f58;
-    --gh-green:       #238636;
-    --gh-green-light: #2ea043;
-    --gh-green-text:  #3fb950;
-    --gh-blue:        #1f6feb;
-    --gh-blue-light:  #388bfd;
-    --gh-orange:      #9e6a03;
-    --gh-orange-text: #e3b341;
-    --gh-red:         #da3633;
-    --gh-red-light:   #f85149;
-    --gh-purple:      #8957e5;
-    --gh-purple-text: #a371f7;
-    --radius-sm:      4px;
-    --radius:         6px;
-    --font-mono:      'SF Mono', 'Cascadia Code', Consolas, 'Courier New', monospace;
+    --gh-bg:           #0d1117;
+    --gh-surface:      #161b22;
+    --gh-surface-2:    #1c2128;
+    --gh-border:       #30363d;
+    --gh-border-muted: #21262d;
+    --gh-text:         #e6edf3;
+    --gh-text-muted:   #7d8590;
+    --gh-text-subtle:  #484f58;
+    --gh-green:        #238636;
+    --gh-green-light:  #2ea043;
+    --gh-green-text:   #3fb950;
+    --gh-blue:         #1f6feb;
+    --gh-blue-light:   #388bfd;
+    --gh-orange:       #9e6a03;
+    --gh-orange-text:  #e3b341;
+    --gh-red:          #da3633;
+    --gh-red-light:    #f85149;
+    --gh-purple:       #8957e5;
+    --gh-purple-text:  #a371f7;
+    --radius-sm:       4px;
+    --radius:          6px;
+    --font-mono:       'SF Mono', 'Cascadia Code', Consolas, 'Courier New', monospace;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -119,30 +122,20 @@ export class GitMindSidebarProvider implements vscode.WebviewViewProvider {
   body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
     font-size: 12px;
-    color: var(--gh-text);
-    background: var(--gh-bg);
-    padding: 0;
     line-height: 1.5;
-    /* Use VS Code theme colors as fallback when available */
-    background: var(--vscode-sideBar-background, var(--gh-bg));
     color: var(--vscode-foreground, var(--gh-text));
+    background: var(--vscode-sideBar-background, var(--gh-bg));
   }
 
-  /* ── Header ── */
+  /* ── Header ────────────────────────────────────────────────── */
   #header {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 10px 12px 8px;
+    padding: 10px 12px 9px;
     border-bottom: 1px solid var(--vscode-editorGroup-border, var(--gh-border));
   }
-
-  #header-icon {
-    width: 16px;
-    height: 16px;
-    flex-shrink: 0;
-  }
-
+  #header-icon { width: 16px; height: 16px; flex-shrink: 0; }
   #header-title {
     font-size: 13px;
     font-weight: 600;
@@ -151,7 +144,7 @@ export class GitMindSidebarProvider implements vscode.WebviewViewProvider {
     color: var(--vscode-foreground, var(--gh-text));
   }
 
-  /* ── Status pill ── */
+  /* ── Status pill ────────────────────────────────────────────── */
   #status-pill {
     display: inline-flex;
     align-items: center;
@@ -164,48 +157,49 @@ export class GitMindSidebarProvider implements vscode.WebviewViewProvider {
     transition: all 0.2s ease;
   }
   #status-pill .dot {
-    width: 6px;
-    height: 6px;
+    width: 6px; height: 6px;
     border-radius: 50%;
     flex-shrink: 0;
   }
-  #status-pill.active {
-    background: rgba(35, 134, 54, 0.15);
-    border-color: rgba(46, 160, 67, 0.4);
-    color: var(--gh-green-text);
-  }
-  #status-pill.active .dot { background: var(--gh-green-text); box-shadow: 0 0 4px var(--gh-green-text); }
-  #status-pill.paused {
-    background: rgba(158, 106, 3, 0.15);
-    border-color: rgba(227, 179, 65, 0.4);
-    color: var(--gh-orange-text);
-  }
-  #status-pill.paused .dot { background: var(--gh-orange-text); }
-  #status-pill.stopped {
-    background: rgba(125, 133, 144, 0.1);
-    border-color: var(--gh-border);
-    color: var(--gh-text-muted);
-  }
+  #status-pill.active  { background: rgba(35,134,54,.15); border-color: rgba(46,160,67,.4); color: var(--gh-green-text); }
+  #status-pill.active .dot  { background: var(--gh-green-text); box-shadow: 0 0 4px var(--gh-green-text); }
+  #status-pill.paused  { background: rgba(158,106,3,.15); border-color: rgba(227,179,65,.4); color: var(--gh-orange-text); }
+  #status-pill.paused .dot  { background: var(--gh-orange-text); }
+  #status-pill.stopped { background: rgba(125,133,144,.1); border-color: var(--gh-border); color: var(--gh-text-muted); }
   #status-pill.stopped .dot { background: var(--gh-text-muted); }
-  #status-pill.error {
-    background: rgba(218, 54, 51, 0.15);
-    border-color: rgba(248, 81, 73, 0.4);
-    color: var(--gh-red-light);
-  }
-  #status-pill.error .dot { background: var(--gh-red-light); }
-  #status-pill.starting {
-    background: rgba(31, 111, 235, 0.15);
-    border-color: rgba(56, 139, 253, 0.4);
-    color: var(--gh-blue-light);
-  }
-  #status-pill.starting .dot { background: var(--gh-blue-light); animation: pulse 1.2s infinite; }
+  #status-pill.error   { background: rgba(218,54,51,.15); border-color: rgba(248,81,73,.4); color: var(--gh-red-light); }
+  #status-pill.error .dot   { background: var(--gh-red-light); }
+  #status-pill.starting{ background: rgba(31,111,235,.15); border-color: rgba(56,139,253,.4); color: var(--gh-blue-light); }
+  #status-pill.starting .dot{ background: var(--gh-blue-light); animation: pulse 1.2s infinite; }
 
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.3; }
-  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
 
-  /* ── Stat row ── */
+  /* ── Push banner ────────────────────────────────────────────── */
+  #push-banner {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: rgba(139,87,229,.1);
+    border-bottom: 1px solid rgba(139,87,229,.25);
+    font-size: 11px;
+    color: var(--gh-purple-text);
+  }
+  #push-banner.visible { display: flex; }
+  #push-banner button {
+    margin-left: auto;
+    padding: 2px 8px;
+    background: rgba(139,87,229,.2);
+    color: var(--gh-purple-text);
+    border: 1px solid rgba(139,87,229,.4);
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+    font-family: inherit;
+  }
+  #push-banner button:hover { background: rgba(139,87,229,.35); }
+
+  /* ── Stat row ───────────────────────────────────────────────── */
   #stat-row {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -221,12 +215,12 @@ export class GitMindSidebarProvider implements vscode.WebviewViewProvider {
     flex-direction: column;
     gap: 2px;
   }
-  .stat-block:hover { background: var(--vscode-list-hoverBackground, rgba(177,186,196,0.06)); }
+  .stat-block:hover { background: var(--vscode-list-hoverBackground, rgba(177,186,196,.06)); }
   .stat-label {
     font-size: 10px;
     color: var(--gh-text-muted);
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: .06em;
     font-weight: 500;
   }
   .stat-value {
@@ -237,13 +231,72 @@ export class GitMindSidebarProvider implements vscode.WebviewViewProvider {
     line-height: 1.2;
   }
   .stat-value.countdown { color: var(--gh-blue-light); font-family: var(--font-mono); font-size: 13px; }
-  .stat-value.streak { color: var(--gh-orange-text); }
-  .stat-value.pending { color: var(--gh-purple-text); }
+  .stat-value.streak    { color: var(--gh-orange-text); }
+  .stat-value.pending   { color: var(--gh-purple-text); }
 
-  /* ── Section ── */
-  .section {
+  /* ── Auto-commit toggle row ─────────────────────────────────── */
+  #auto-commit-row {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
     border-bottom: 1px solid var(--vscode-editorGroup-border, var(--gh-border));
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+    transition: background .12s;
   }
+  #auto-commit-row:hover { background: var(--vscode-list-hoverBackground, rgba(177,186,196,.06)); }
+  .auto-icon {
+    width: 14px; height: 14px;
+    color: var(--gh-text-muted);
+    flex-shrink: 0;
+  }
+  .auto-label-group { flex: 1; }
+  .auto-label-title {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--vscode-foreground, var(--gh-text));
+  }
+  .auto-label-sub {
+    font-size: 10px;
+    color: var(--gh-text-muted);
+    margin-top: 1px;
+  }
+
+  /* toggle switch */
+  .toggle-wrap { flex-shrink: 0; }
+  .toggle-switch {
+    position: relative;
+    width: 32px;
+    height: 18px;
+    display: inline-block;
+    pointer-events: none; /* row handles click */
+  }
+  .toggle-switch input { display: none; }
+  .toggle-track {
+    position: absolute;
+    inset: 0;
+    border-radius: 9px;
+    background: var(--gh-border);
+    border: 1px solid var(--gh-text-subtle);
+    transition: background .2s, border-color .2s;
+  }
+  .toggle-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--gh-text-muted);
+    transition: transform .2s, background .2s;
+    box-shadow: 0 1px 3px rgba(0,0,0,.4);
+  }
+  .toggle-switch.on .toggle-track  { background: var(--gh-green); border-color: var(--gh-green-light); }
+  .toggle-switch.on .toggle-thumb  { background: #fff; transform: translateX(14px); }
+
+  /* ── Section ────────────────────────────────────────────────── */
+  .section { border-bottom: 1px solid var(--vscode-editorGroup-border, var(--gh-border)); }
   .section-header {
     display: flex;
     align-items: center;
@@ -252,47 +305,57 @@ export class GitMindSidebarProvider implements vscode.WebviewViewProvider {
     cursor: pointer;
     user-select: none;
   }
-  .section-header:hover { background: var(--vscode-list-hoverBackground, rgba(177,186,196,0.06)); }
+  .section-header:hover { background: var(--vscode-list-hoverBackground, rgba(177,186,196,.06)); }
+  .section-header-left { display: flex; align-items: center; gap: 6px; }
   .section-title {
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.07em;
+    letter-spacing: .07em;
     color: var(--gh-text-muted);
   }
+  .section-chevron {
+    color: var(--gh-text-subtle);
+    transition: transform .15s;
+    flex-shrink: 0;
+  }
+  .section-chevron.collapsed { transform: rotate(-90deg); }
   .section-badge {
     font-size: 10px;
     padding: 1px 5px;
     border-radius: 10px;
-    background: var(--vscode-badge-background, rgba(56,139,253,0.15));
+    background: var(--vscode-badge-background, rgba(56,139,253,.15));
     color: var(--vscode-badge-foreground, var(--gh-blue-light));
     font-weight: 600;
     font-variant-numeric: tabular-nums;
   }
   .section-body { padding: 0 8px 8px; }
+  .section-body.collapsed { display: none; }
 
-  /* ── Action buttons ── */
+  /* ── Action buttons ─────────────────────────────────────────── */
   .btn-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 5px;
-    padding: 8px 8px 0;
+    padding: 8px 0 0;
   }
+  .btn-grid.full { grid-template-columns: 1fr; }
   .btn {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 5px;
-    padding: 5px 10px;
+    padding: 6px 10px;
     border-radius: var(--radius-sm);
     font-size: 11px;
     font-weight: 500;
     cursor: pointer;
     border: 1px solid transparent;
-    transition: all 0.15s ease;
+    transition: all .15s ease;
     white-space: nowrap;
     font-family: inherit;
   }
+  .btn svg { flex-shrink: 0; }
   .btn-primary {
     background: var(--vscode-button-background, var(--gh-green));
     color: var(--vscode-button-foreground, #fff);
@@ -301,40 +364,51 @@ export class GitMindSidebarProvider implements vscode.WebviewViewProvider {
   .btn-primary:hover {
     background: var(--vscode-button-hoverBackground, var(--gh-green-light));
     border-color: var(--vscode-button-hoverBackground, var(--gh-green-light));
+    filter: brightness(1.1);
   }
   .btn-secondary {
-    background: var(--vscode-button-secondaryBackground, rgba(48,54,61,0.9));
+    background: var(--vscode-button-secondaryBackground, rgba(48,54,61,.9));
     color: var(--vscode-button-secondaryForeground, var(--gh-text));
     border-color: var(--vscode-editorGroup-border, var(--gh-border));
   }
   .btn-secondary:hover {
-    background: var(--vscode-button-secondaryHoverBackground, rgba(56,139,253,0.1));
+    background: var(--vscode-button-secondaryHoverBackground, rgba(56,139,253,.1));
     border-color: var(--gh-blue);
     color: var(--gh-blue-light);
   }
   .btn-danger {
     background: transparent;
     color: var(--gh-red-light);
-    border-color: rgba(218,54,51,0.4);
+    border-color: rgba(218,54,51,.4);
   }
-  .btn-danger:hover { background: rgba(218,54,51,0.1); }
+  .btn-danger:hover { background: rgba(218,54,51,.1); }
+  .btn-push {
+    background: rgba(139,87,229,.12);
+    color: var(--gh-purple-text);
+    border-color: rgba(139,87,229,.35);
+  }
+  .btn-push:hover { background: rgba(139,87,229,.22); border-color: rgba(139,87,229,.6); }
 
-  .btn svg { flex-shrink: 0; }
+  /* ── Divider ─────────────────────────────────────────────────── */
+  .btn-divider {
+    height: 1px;
+    background: var(--vscode-editorGroup-border, var(--gh-border-muted));
+    margin: 8px 0 0;
+    opacity: .6;
+  }
 
-  /* ── Commit list ── */
+  /* ── Commit list ────────────────────────────────────────────── */
   .commit-list { list-style: none; padding: 4px 0 0; }
   .commit-item {
     display: flex;
     align-items: flex-start;
     gap: 8px;
-    padding: 6px 10px;
+    padding: 5px 10px;
     border-radius: var(--radius-sm);
     margin: 1px 0;
-    cursor: default;
-    transition: background 0.1s;
+    transition: background .1s;
   }
-  .commit-item:hover { background: var(--vscode-list-hoverBackground, rgba(177,186,196,0.06)); }
-
+  .commit-item:hover { background: var(--vscode-list-hoverBackground, rgba(177,186,196,.06)); }
   .commit-dot-track {
     display: flex;
     flex-direction: column;
@@ -343,14 +417,13 @@ export class GitMindSidebarProvider implements vscode.WebviewViewProvider {
     flex-shrink: 0;
   }
   .commit-dot {
-    width: 8px;
-    height: 8px;
+    width: 8px; height: 8px;
     border-radius: 50%;
     border: 2px solid var(--gh-blue-light);
-    background: var(--gh-bg);
+    background: var(--vscode-sideBar-background, var(--gh-bg));
     flex-shrink: 0;
   }
-  .commit-dot.gitmind { border-color: var(--gh-green-text); background: rgba(63, 185, 80, 0.2); }
+  .commit-dot.gitmind { border-color: var(--gh-green-text); background: rgba(63,185,80,.2); }
   .commit-line {
     width: 1px;
     flex: 1;
@@ -358,7 +431,6 @@ export class GitMindSidebarProvider implements vscode.WebviewViewProvider {
     background: var(--vscode-editorGroup-border, var(--gh-border));
     margin-top: 2px;
   }
-
   .commit-body { flex: 1; min-width: 0; }
   .commit-msg {
     font-size: 12px;
@@ -380,43 +452,40 @@ export class GitMindSidebarProvider implements vscode.WebviewViewProvider {
     font-family: var(--font-mono);
     font-size: 10px;
     color: var(--gh-blue-light);
-    background: rgba(56,139,253,0.1);
+    background: rgba(56,139,253,.1);
     padding: 0 4px;
     border-radius: 3px;
-    border: 1px solid rgba(56,139,253,0.2);
+    border: 1px solid rgba(56,139,253,.2);
   }
   .commit-time { font-size: 10px; color: var(--gh-text-muted); }
-  .commit-diff {
-    font-size: 10px;
-    color: var(--gh-text-muted);
-  }
+  .commit-diff { font-size: 10px; color: var(--gh-text-muted); }
   .commit-diff .add { color: var(--gh-green-text); }
   .commit-diff .del { color: var(--gh-red-light); }
 
   .badge {
     display: inline-flex;
     align-items: center;
-    gap: 3px;
     font-size: 9px;
     font-weight: 600;
     padding: 1px 5px;
     border-radius: 10px;
-    letter-spacing: 0.02em;
+    letter-spacing: .02em;
     text-transform: uppercase;
     vertical-align: middle;
+    margin-left: 4px;
   }
   .badge-gitmind {
-    background: rgba(63,185,80,0.15);
+    background: rgba(63,185,80,.15);
     color: var(--gh-green-text);
-    border: 1px solid rgba(63,185,80,0.3);
+    border: 1px solid rgba(63,185,80,.3);
   }
   .badge-fallback {
-    background: rgba(158,106,3,0.15);
+    background: rgba(158,106,3,.15);
     color: var(--gh-orange-text);
-    border: 1px solid rgba(227,179,65,0.25);
+    border: 1px solid rgba(227,179,65,.25);
   }
 
-  /* ── Activity log ── */
+  /* ── Activity log ───────────────────────────────────────────── */
   .activity-list {
     list-style: none;
     max-height: 130px;
@@ -432,7 +501,7 @@ export class GitMindSidebarProvider implements vscode.WebviewViewProvider {
     border-radius: var(--radius-sm);
     line-height: 1.4;
   }
-  .activity-item:hover { background: var(--vscode-list-hoverBackground, rgba(177,186,196,0.04)); }
+  .activity-item:hover { background: var(--vscode-list-hoverBackground, rgba(177,186,196,.04)); }
   .activity-time {
     font-family: var(--font-mono);
     font-size: 10px;
@@ -440,69 +509,25 @@ export class GitMindSidebarProvider implements vscode.WebviewViewProvider {
     flex-shrink: 0;
     padding-top: 1px;
   }
-  .activity-msg { color: var(--gh-text-muted); flex: 1; }
-  .activity-item.error .activity-msg { color: var(--gh-red-light); }
+  .activity-msg            { color: var(--gh-text-muted); flex: 1; }
+  .activity-item.error   .activity-msg { color: var(--gh-red-light); }
   .activity-item.warning .activity-msg { color: var(--gh-orange-text); }
-  .activity-item.info .activity-msg { color: var(--gh-text-muted); }
 
-  /* ── Empty state ── */
-  .empty-state {
-    text-align: center;
-    padding: 16px 12px;
-    color: var(--gh-text-muted);
-  }
-  .empty-state svg { opacity: 0.3; margin-bottom: 6px; }
+  /* ── Empty state ─────────────────────────────────────────────── */
+  .empty-state { text-align: center; padding: 16px 12px; color: var(--gh-text-muted); }
+  .empty-state svg { opacity: .3; margin-bottom: 6px; }
   .empty-state p { font-size: 11px; }
 
-  /* ── Push indicator ── */
-  #push-banner {
-    display: none;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    background: rgba(139, 87, 229, 0.12);
-    border-bottom: 1px solid rgba(139, 87, 229, 0.3);
-    font-size: 11px;
-    color: var(--gh-purple-text);
-  }
-  #push-banner.visible { display: flex; }
-  #push-banner button {
-    margin-left: auto;
-    padding: 2px 8px;
-    background: rgba(139, 87, 229, 0.2);
-    color: var(--gh-purple-text);
-    border: 1px solid rgba(139, 87, 229, 0.4);
-    border-radius: 3px;
-    cursor: pointer;
-    font-size: 11px;
-    font-family: inherit;
-  }
-  #push-banner button:hover { background: rgba(139, 87, 229, 0.35); }
-
-  /* ── Pending changes pill ── */
-  #pending-banner {
-    display: none;
-    align-items: center;
-    gap: 6px;
-    padding: 5px 12px;
-    background: rgba(163, 113, 247, 0.08);
-    border-bottom: 1px solid rgba(163, 113, 247, 0.2);
-    font-size: 11px;
-    color: var(--gh-purple-text);
-  }
-  #pending-banner.visible { display: flex; }
-
-  /* ── Scrollbar ── */
+  /* ── Scrollbar ───────────────────────────────────────────────── */
   ::-webkit-scrollbar { width: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--gh-border); border-radius: 2px; }
 
-  /* ── Notification toast ── */
+  /* ── Toast ───────────────────────────────────────────────────── */
   #toast {
     position: fixed;
     bottom: 10px;
-    left: 8px;
-    right: 8px;
+    left: 8px; right: 8px;
     padding: 8px 10px;
     border-radius: var(--radius);
     font-size: 11px;
@@ -511,24 +536,12 @@ export class GitMindSidebarProvider implements vscode.WebviewViewProvider {
     gap: 6px;
     z-index: 100;
     border: 1px solid transparent;
-    animation: slideUp 0.2s ease;
+    animation: slideUp .2s ease;
   }
-  #toast.success {
-    background: rgba(35,134,54,0.9);
-    border-color: var(--gh-green);
-    color: #fff;
-    display: flex;
-  }
-  #toast.error {
-    background: rgba(218,54,51,0.9);
-    border-color: var(--gh-red);
-    color: #fff;
-    display: flex;
-  }
-  @keyframes slideUp {
-    from { transform: translateY(8px); opacity: 0; }
-    to   { transform: translateY(0);   opacity: 1; }
-  }
+  #toast.success { background: rgba(35,134,54,.92); border-color: var(--gh-green); color: #fff; display: flex; }
+  #toast.warn    { background: rgba(158,106,3,.92); border-color: var(--gh-orange); color: #fff; display: flex; }
+  #toast.error   { background: rgba(218,54,51,.92); border-color: var(--gh-red);   color: #fff; display: flex; }
+  @keyframes slideUp { from{transform:translateY(8px);opacity:0} to{transform:translateY(0);opacity:1} }
 </style>
 </head>
 <body>
@@ -553,7 +566,7 @@ export class GitMindSidebarProvider implements vscode.WebviewViewProvider {
 <!-- Pending push banner -->
 <div id="push-banner">
   <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-    <path d="M1 7.775V2.75C1 1.784 1.784 1 2.75 1h5.025c.464 0 .91.184 1.238.513l6.25 6.25a1.75 1.75 0 010 2.474l-5.026 5.026a1.75 1.75 0 01-2.474 0l-6.25-6.25A1.75 1.75 0 011 7.775zm1.5 0c0 .066.026.13.073.177l6.25 6.25a.25.25 0 00.354 0l5.025-5.025a.25.25 0 000-.354l-6.25-6.25a.25.25 0 00-.177-.073H2.75a.25.25 0 00-.25.25v5.025zM6 10a2 2 0 100-4 2 2 0 000 4z"/>
+    <path d="M2.75 14A1.75 1.75 0 011 12.25v-2.5a.75.75 0 011.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 00.25-.25v-2.5a.75.75 0 011.5 0v2.5A1.75 1.75 0 0113.25 14H2.75zM8 1a.75.75 0 01.75.75v6.94l2.22-2.22a.75.75 0 011.06 1.06l-3.5 3.5a.75.75 0 01-1.06 0l-3.5-3.5a.75.75 0 111.06-1.06L7.25 8.69V1.75A.75.75 0 018 1z"/>
   </svg>
   1 commit ahead of origin
   <button onclick="send('push')">Push now</button>
@@ -575,10 +588,32 @@ export class GitMindSidebarProvider implements vscode.WebviewViewProvider {
   </div>
 </div>
 
+<!-- Auto-commit toggle -->
+<div id="auto-commit-row" onclick="toggleAutoCommit()" title="Toggle automatic commits">
+  <svg class="auto-icon" viewBox="0 0 16 16" fill="currentColor">
+    <path d="M8 0a8 8 0 100 16A8 8 0 008 0zM1.5 8a6.5 6.5 0 0111.14-4.55L3.45 12.64A6.47 6.47 0 011.5 8zm1.86 4.55L12.55 3.36A6.5 6.5 0 013.36 12.55z"/>
+  </svg>
+  <div class="auto-label-group">
+    <div class="auto-label-title">Auto-commit</div>
+    <div class="auto-label-sub" id="auto-sub">Commits changes automatically on schedule</div>
+  </div>
+  <div class="toggle-wrap">
+    <div class="toggle-switch" id="auto-toggle-switch">
+      <div class="toggle-track"></div>
+      <div class="toggle-thumb"></div>
+    </div>
+  </div>
+</div>
+
 <!-- Actions -->
 <div class="section">
   <div class="section-header" onclick="toggleSection('actions')">
-    <span class="section-title">Actions</span>
+    <div class="section-header-left">
+      <span class="section-title">Actions</span>
+    </div>
+    <svg class="section-chevron" id="chevron-actions" width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+      <path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z"/>
+    </svg>
   </div>
   <div class="section-body" id="actions-body">
     <div class="btn-grid">
@@ -588,17 +623,16 @@ export class GitMindSidebarProvider implements vscode.WebviewViewProvider {
         </svg>
         Commit Now
       </button>
-      <button class="btn btn-secondary" onclick="send('push')">
+      <button class="btn btn-push" onclick="send('push')">
         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M8 2.003a.75.75 0 01.75.75v6.44l1.97-1.97a.749.749 0 011.275.326.749.749 0 01-.215.734l-3.25 3.25a.75.75 0 01-1.06 0L4.22 8.283a.749.749 0 011.06-1.06l1.97 1.969V2.753A.75.75 0 018 2.003zM1.5 14.25a.75.75 0 000 1.5h13a.75.75 0 000-1.5h-13z" transform="scale(1,-1) translate(0,-16)"/>
-          <path d="M8 14.25l-3.25-3.25 1.06-1.06L8 11.94l2.19-2a.75.75 0 011.06 1.06L8 14.25z"/>
-          <path d="M7.25 2a.75.75 0 011.5 0v9a.75.75 0 01-1.5 0V2z"/>
-          <path d="M1.5 13.25a.75.75 0 000 1.5h13a.75.75 0 000-1.5h-13z"/>
+          <path d="M2.75 14A1.75 1.75 0 011 12.25v-2.5a.75.75 0 011.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 00.25-.25v-2.5a.75.75 0 011.5 0v2.5A1.75 1.75 0 0113.25 14H2.75zM8 1a.75.75 0 01.75.75v6.94l2.22-2.22a.75.75 0 011.06 1.06l-3.5 3.5a.75.75 0 01-1.06 0l-3.5-3.5a.75.75 0 111.06-1.06L7.25 8.69V1.75A.75.75 0 018 1z"/>
         </svg>
         Push
       </button>
+    </div>
+    <div class="btn-grid" style="margin-top:5px">
       <button class="btn btn-secondary" id="btn-pause" onclick="send('pause')">
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" id="pause-icon">
           <path d="M6 3.75A.75.75 0 015.25 3h-.5a.75.75 0 00-.75.75v8.5c0 .414.336.75.75.75h.5a.75.75 0 00.75-.75v-8.5zm5.5 0A.75.75 0 0110.75 3h-.5a.75.75 0 00-.75.75v8.5c0 .414.336.75.75.75h.5a.75.75 0 00.75-.75v-8.5z"/>
         </svg>
         <span id="pause-label">Pause</span>
@@ -609,19 +643,28 @@ export class GitMindSidebarProvider implements vscode.WebviewViewProvider {
         </svg>
         Restart
       </button>
-      <button class="btn btn-secondary" onclick="send('setTimer')" title="Change commit interval">
+    </div>
+    <div class="btn-divider"></div>
+    <div class="btn-grid" style="margin-top:8px">
+      <button id="btn-set-timer" class="btn btn-secondary" onclick="send('setTimer')" title="Interval: 1h — click to change">
         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
           <path fill-rule="evenodd" d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM0 8a8 8 0 1116 0A8 8 0 010 8zm8-3a.75.75 0 01.75.75v2.53l1.78 1.78a.75.75 0 11-1.06 1.06l-2-2A.75.75 0 017.25 8V5.75A.75.75 0 018 5z"/>
         </svg>
-        Set Timer
+        Timer: <span id="timer-interval-label">1h</span>
+      </button>
+      <button class="btn btn-secondary" onclick="send('setTone')" title="Set commit message tone">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M0 1.75A.75.75 0 01.75 1h4.253c1.227 0 2.317.59 3 1.501A3.744 3.744 0 0111.006 1h3.245a.75.75 0 01.75.75v10.5a.75.75 0 01-.75.75h-3.507a2.25 2.25 0 00-1.591.659l-.622.621a.75.75 0 01-1.06 0l-.622-.621A2.25 2.25 0 005.258 13H.75a.75.75 0 01-.75-.75zm7.251 10.324a3.75 3.75 0 012.757-1.075h2.745V2.5h-2.503a2.25 2.25 0 00-2.25 2.25v7.374zm-1.501 0V4.75a2.25 2.25 0 00-2.25-2.25H1.5v9.5h3.757a3.75 3.75 0 012.493 1.074z"/>
+        </svg>
+        Set Tone
       </button>
     </div>
-    <div class="btn-grid" style="margin-top:5px; grid-template-columns: 1fr;">
+    <div class="btn-grid full" style="margin-top:5px">
       <button class="btn btn-secondary" onclick="send('showStats')" title="View commit statistics">
         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
           <path d="M1.5 1.75a.75.75 0 00-1.5 0v12.5c0 .414.336.75.75.75h14.5a.75.75 0 000-1.5H1.5V1.75zm14.28 2.53a.75.75 0 00-1.06-1.06l-4.5 4.5L6.97 5.47a.75.75 0 00-1.06 0L2.22 9.22a.75.75 0 001.06 1.06l3.16-3.16 2.75 2.75a.75.75 0 001.06 0l5-5z"/>
         </svg>
-        Stats
+        View Stats
       </button>
     </div>
   </div>
@@ -630,8 +673,13 @@ export class GitMindSidebarProvider implements vscode.WebviewViewProvider {
 <!-- Recent Commits -->
 <div class="section">
   <div class="section-header" onclick="toggleSection('commits')">
-    <span class="section-title">Commits</span>
-    <span class="section-badge" id="commit-count">0</span>
+    <div class="section-header-left">
+      <span class="section-title">Commits</span>
+      <span class="section-badge" id="commit-count">0</span>
+    </div>
+    <svg class="section-chevron" id="chevron-commits" width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+      <path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z"/>
+    </svg>
   </div>
   <div class="section-body" id="commits-body">
     <ul class="commit-list" id="commit-list">
@@ -648,7 +696,12 @@ export class GitMindSidebarProvider implements vscode.WebviewViewProvider {
 <!-- Activity Log -->
 <div class="section" style="border-bottom:none">
   <div class="section-header" onclick="toggleSection('activity')">
-    <span class="section-title">Activity</span>
+    <div class="section-header-left">
+      <span class="section-title">Activity</span>
+    </div>
+    <svg class="section-chevron" id="chevron-activity" width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+      <path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z"/>
+    </svg>
   </div>
   <div class="section-body" id="activity-body">
     <ul class="activity-list" id="activity-list">
@@ -671,9 +724,53 @@ export class GitMindSidebarProvider implements vscode.WebviewViewProvider {
   }
 
   // ── Section toggle ────────────────────────────────────────────────────────
+  const sectionState = { actions: true, commits: true, activity: true };
+
   function toggleSection(id) {
-    const body = document.getElementById(id + '-body');
-    if (body) body.style.display = body.style.display === 'none' ? '' : body.style.display;
+    sectionState[id] = !sectionState[id];
+    const body    = document.getElementById(id + '-body');
+    const chevron = document.getElementById('chevron-' + id);
+    if (body)    body.classList.toggle('collapsed', !sectionState[id]);
+    if (chevron) chevron.classList.toggle('collapsed', !sectionState[id]);
+  }
+
+  // ── Auto-commit toggle ────────────────────────────────────────────────────
+  let autoModeState   = false;
+  let intervalSeconds = 3600; // kept in sync via 'interval' messages
+
+  function fmtInterval(s) {
+    if (s < 60)   { return s + 's'; }
+    if (s < 3600) { const m = Math.floor(s/60), r = s%60; return r===0 ? m+'m' : m+'m '+r+'s'; }
+    const h = Math.floor(s/3600), m = Math.floor((s%3600)/60);
+    return m === 0 ? h+'h' : h+'h '+m+'m';
+  }
+
+  function setAutoToggle(on) {
+    autoModeState = on;
+    const sw  = document.getElementById('auto-toggle-switch');
+    const sub = document.getElementById('auto-sub');
+    sw.classList.toggle('on', on);
+    sub.textContent = on
+      ? 'Commits every ' + fmtInterval(intervalSeconds) + ' automatically'
+      : 'Manual mode — click Commit Now to commit';
+  }
+
+  function applyInterval(seconds) {
+    intervalSeconds = seconds;
+    if (autoModeState) {
+      document.getElementById('auto-sub').textContent =
+        'Commits every ' + fmtInterval(seconds) + ' automatically';
+    }
+    const span = document.getElementById('timer-interval-label');
+    if (span) { span.textContent = fmtInterval(seconds); }
+    const btn = document.getElementById('btn-set-timer');
+    if (btn)  { btn.title = 'Interval: ' + fmtInterval(seconds) + ' — click to change'; }
+  }
+
+  function toggleAutoCommit() {
+    send('toggleAutoMode');
+    setAutoToggle(!autoModeState);
+    showToast(!autoModeState ? 'Auto-commit enabled' : 'Auto-commit disabled', 'success');
   }
 
   // ── Format seconds ────────────────────────────────────────────────────────
@@ -700,30 +797,29 @@ export class GitMindSidebarProvider implements vscode.WebviewViewProvider {
   // ── Escape HTML ───────────────────────────────────────────────────────────
   function esc(s) {
     return String(s)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
-  // ── Toast notification ────────────────────────────────────────────────────
+  // ── Toast ─────────────────────────────────────────────────────────────────
   let _toastTimer = null;
+  const ICONS = {
+    success: '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/></svg>',
+    warn:    '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8.22 1.754a.25.25 0 00-.44 0L1.698 13.132a.25.25 0 00.22.368h12.164a.25.25 0 00.22-.368L8.22 1.754zm-1.544 4.26a.75.75 0 011.5 0v3a.75.75 0 01-1.5 0v-3zm.76 5.5a1 1 0 110-2 1 1 0 010 2z"/></svg>',
+    error:   '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M2.343 13.657A8 8 0 1113.657 2.343 8 8 0 012.343 13.657zM6.03 4.97a.75.75 0 00-1.06 1.06L6.94 8 4.97 9.97a.75.75 0 101.06 1.06L8 9.06l1.97 1.97a.75.75 0 101.06-1.06L9.06 8l1.97-1.97a.75.75 0 10-1.06-1.06L8 6.94 6.03 4.97z"/></svg>',
+  };
   function showToast(msg, type = 'success') {
     const t = document.getElementById('toast');
     t.className = type;
-    t.innerHTML = (type === 'success'
-      ? '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/></svg>'
-      : '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M4.47.22A.75.75 0 015 0h6c.2 0 .389.08.53.22l4.25 4.25c.141.14.22.33.22.53v6a.75.75 0 01-.22.53l-4.25 4.25A.75.75 0 0111 16H5a.75.75 0 01-.53-.22L.22 11.53A.75.75 0 010 11V5c0-.2.079-.39.22-.53L4.47.22zm.84 1.28L1.5 5.31v5.38l3.81 3.81h5.38l3.81-3.81V5.31L10.69 1.5H5.31zM8 4a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 018 4zm0 8a1 1 0 100-2 1 1 0 000 2z"/></svg>'
-    ) + ' ' + esc(msg);
+    t.innerHTML = (ICONS[type] || ICONS.success) + ' ' + esc(msg);
     if (_toastTimer) clearTimeout(_toastTimer);
     _toastTimer = setTimeout(() => { t.className = ''; }, 3500);
   }
 
   // ── Apply status ──────────────────────────────────────────────────────────
   function applyStatus(p) {
-    const pill = document.getElementById('status-pill');
+    const pill  = document.getElementById('status-pill');
     const label = document.getElementById('status-label');
-    const pauseBtn = document.getElementById('btn-pause');
     const pauseLabel = document.getElementById('pause-label');
 
     if (!p.running) {
@@ -736,46 +832,43 @@ export class GitMindSidebarProvider implements vscode.WebviewViewProvider {
       if (pauseLabel) pauseLabel.textContent = 'Pause';
     }
 
-    document.getElementById('s-next').textContent = fmtSec(p.next_commit_in);
-    document.getElementById('s-streak').textContent = (p.streak_days ?? 0) + 'd';
-
+    document.getElementById('s-next').textContent    = fmtSec(p.next_commit_in);
+    document.getElementById('s-streak').textContent  = (p.streak_days ?? 0) + 'd';
     if ('pending_changes' in p) {
-      const n = p.pending_changes || 0;
-      document.getElementById('s-pending').textContent = n;
+      document.getElementById('s-pending').textContent = p.pending_changes || 0;
+    }
+
+    // Auto-mode toggle
+    if ('auto_mode' in p) {
+      setAutoToggle(!!p.auto_mode);
     }
 
     // Push banner
     const pushBanner = document.getElementById('push-banner');
-    if (p.pending_push) {
-      pushBanner.classList.add('visible');
-    } else {
-      pushBanner.classList.remove('visible');
-    }
+    p.pending_push
+      ? pushBanner.classList.add('visible')
+      : pushBanner.classList.remove('visible');
   }
 
   // ── Apply log ─────────────────────────────────────────────────────────────
   function applyLog({ commits, activity }) {
-    const list = document.getElementById('commit-list');
+    const list       = document.getElementById('commit-list');
     const countBadge = document.getElementById('commit-count');
 
     if (commits && commits.length > 0) {
       countBadge.textContent = commits.length;
       list.innerHTML = commits.slice(0, 15).map((c, i, arr) => {
         const isFallback = c.message.includes('[gitmind-fallback]');
-        const cleanMsg = c.message.replace('[gitmind-fallback]', '').trim();
-
-        const badge = c.is_gitmind
+        const cleanMsg   = c.message.replace('[gitmind-fallback]', '').trim();
+        const badge      = c.is_gitmind
           ? isFallback
             ? '<span class="badge badge-fallback">fallback</span>'
             : '<span class="badge badge-gitmind">gitmind</span>'
           : '';
-
         const diffStr = (c.insertions || c.deletions)
           ? \`<span class="commit-diff"><span class="add">+\${c.insertions}</span> <span class="del">-\${c.deletions}</span></span>\`
           : '';
-
         const hasNext = i < arr.length - 1;
-
         return \`<li class="commit-item">
           <div class="commit-dot-track">
             <div class="commit-dot \${c.is_gitmind ? 'gitmind' : ''}"></div>
@@ -801,13 +894,12 @@ export class GitMindSidebarProvider implements vscode.WebviewViewProvider {
       </li>\`;
     }
 
-    // Activity log
     const aList = document.getElementById('activity-list');
     if (activity && activity.length > 0) {
       aList.innerHTML = activity.slice(0, 25).map(a => {
-        const levelClass = a.level === 'error' ? 'error' : a.level === 'warning' ? 'warning' : 'info';
+        const cls     = a.level === 'error' ? 'error' : a.level === 'warning' ? 'warning' : 'info';
         const timeStr = a.time ? a.time.slice(11, 19) : '–';
-        return \`<li class="activity-item \${levelClass}">
+        return \`<li class="activity-item \${cls}">
           <span class="activity-time">\${esc(timeStr)}</span>
           <span class="activity-msg">\${esc(a.message)}</span>
         </li>\`;
@@ -819,8 +911,6 @@ export class GitMindSidebarProvider implements vscode.WebviewViewProvider {
   window.addEventListener('message', ({ data: msg }) => {
     switch (msg.type) {
       case 'status':
-        applyStatus(msg.payload);
-        break;
       case 'sseUpdate':
         applyStatus(msg.payload);
         break;
@@ -832,21 +922,22 @@ export class GitMindSidebarProvider implements vscode.WebviewViewProvider {
         showToast(\`Committed \${hash}: \${message.slice(0, 40)}\${message.length > 40 ? '…' : ''}\`);
         break;
       }
-      case 'pushConfirm': {
+      case 'pushConfirm':
         showToast('Pushed to origin ✓');
-        // Hide push banner
         document.getElementById('push-banner').classList.remove('visible');
         break;
-      }
+      case 'interval':
+        applyInterval(msg.payload.seconds);
+        break;
       case 'offline': {
-        const pill = document.getElementById('status-pill');
+        const pill  = document.getElementById('status-pill');
         const label = document.getElementById('status-label');
         pill.className = 'error'; label.textContent = 'offline';
         break;
       }
       case 'processState': {
-        const s = msg.payload.state;
-        const pill = document.getElementById('status-pill');
+        const s     = msg.payload.state;
+        const pill  = document.getElementById('status-pill');
         const label = document.getElementById('status-label');
         if (s === 'starting' || s === 'restarting') {
           pill.className = 'starting'; label.textContent = s + '…';
