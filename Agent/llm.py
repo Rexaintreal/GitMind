@@ -29,14 +29,14 @@ MAX_DIFF = 4000    # chars — truncate before sending
 SYSTEM_PROMPT = """You are an expert Git commit message writer.
 You follow Conventional Commits format strictly.
 Rules:
-- Format: <type>(<scope>): <short description>
-- Types: feat, fix, refactor, chore, docs, style, test, perf
-- Max 72 characters total
-- Imperative mood: "add" not "added", "fix" not "fixed"
-- No period at the end
-- Be specific — mention the actual thing changed
-- Return ONLY the commit message. No explanation, no quotes,
-  no markdown, no newlines."""
+1. Subject line (first line): <type>(<scope>): <expressive description>
+   - Max 72 characters. Imperative mood. No period.
+   - Be specific and expressive — "add logic" is bad, "implement robust error handling for API" is good.
+   - Types: feat, fix, refactor, chore, docs, style, test, perf.
+2. Body (optional): If the change is complex, add a blank line after the subject, then a detailed description.
+   - Explain the 'why' and 'how' of the changes.
+   - Use bullet points if necessary.
+3. Return ONLY the commit message. No meta-talk, no quotes, no markdown blocks."""
 
 VALID_TYPES = {"feat", "fix", "refactor", "chore", "docs", "style", "test", "perf"}
 
@@ -75,7 +75,7 @@ Return only the commit message string."""
     }
     payload = {
         "model": MODEL,
-        "max_tokens": 100,
+        "max_tokens": 300,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
@@ -115,9 +115,12 @@ Return only the commit message string."""
 
     # 5. Clean the raw string
     message = raw.strip()
-    message = message.strip("\"'")           # strip surrounding quotes
-    message = re.sub(r"\n.*", "", message)    # keep only first line
-    message = message[:72]                    # enforce hard character limit
+    message = message.strip("\"'`")           # strip surrounding quotes/backticks
+    message = re.sub(r"^commit\s+msg:\s*", "", message, flags=re.I) # strip prefixes
+    
+    # Ensure it's not just a block of markdown
+    message = re.sub(r"^```[a-z]*\n", "", message)
+    message = re.sub(r"\n```$", "", message)
 
     if not message:
         raise RuntimeError("LLM returned empty message")
