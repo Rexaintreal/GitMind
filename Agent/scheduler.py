@@ -19,6 +19,7 @@ from state_utils import state, write_status_file, log_activity, _lock
 from analyzer import DiffAnalyzer, SemanticGrouper
 from planner import CommitPlanner
 from persistence import save as persist_save
+from syntax_checker import check_files   # ← NEW
 
 logger = logging.getLogger("gitmind.scheduler")
 
@@ -141,7 +142,6 @@ def commit_cycle(force: bool = False) -> bool:
         action = "SUGGEST"
         reason = "Auto mode off"
     else:
-        # If auto_mode is ON and there are changes when timer fires, we should commit!
         action = "AUTO_COMMIT"
         reason = f"Timer expired with {file_count} changes"
 
@@ -173,7 +173,72 @@ def commit_cycle(force: bool = False) -> bool:
         logger.debug("commit_cycle: diff empty even after staging (e.g. only empty directories)")
         return False
 
-    # STEP 5 — Analyze diff and generate semantic commit plan
+    # ─── STEP 5b — SYNTAX CHECK GATE ─────────────────────────────────────────
+    # Parse all changed filenames from the diff and run syntax validation.
+    # A single syntax error in any supported file type blocks the entire commit.
+    # This prevents broken code from ever entering git history automatically.
+    try:
+        import re as _re
+        pending_files = _re.findall(r'diff --git a/\S+ b/(\S+)', diff)
+        # Also include untracked files that were just staged
+        try:
+            pending_files += ops.repo.untracked_files
+        except Exception:
+            pass
+        # Deduplicate
+        seen: set = set()
+        pending_files = [f for f in pending_files
+                         if not (f in seen or seen.add(f))]
+
+        syntax_result = check_files(pending_files, repo_path=repo_path)
+
+        if not syntax_result.passed:
+            # Log every error into the activity feed so the VS Code
+            # sidebar shows exactly which files have problems.
+            error_summary = "; ".join(str(e) for e in syntax_result.errors)
+            logger.warning(
+                f"commit_cycle: BLOCKED by syntax errors — {error_summary}"
+            )
+            log_activity(
+                f"⛔ Commit blocked: syntax errors in "
+                f"{len(syntax_result.errors)} file(s): {error_summary}",
+                "warning",
+            )
+            with _lock:
+                state["last_command"] = (
+                    f"[BLOCKED] syntax errors: {error_summary[:120]}"
+                )
+                # Keep pending_changes accurate so the sidebar badge updates
+                state["pending_changes"] = file_count
+                state["syntax_errors"] = syntax_result.to_dict()
+
+            write_status_file()
+            # Do NOT commit — return False so the timer resets and retries
+            # next cycle (giving the developer time to fix the errors).
+            return False
+
+        # All clear — clear any previously stored syntax error state
+        with _lock:
+            state.pop("syntax_errors", None)
+
+        logger.info(
+            f"commit_cycle: syntax check passed "
+            f"({len(syntax_result.checked)} file(s) checked)"
+        )
+
+    except Exception as e:
+        # Syntax checker itself crashed — warn but do NOT block the commit.
+        # A broken checker should never prevent legitimate commits.
+        logger.error(
+            f"commit_cycle: syntax checker raised an exception ({e}) "
+            f"— proceeding without syntax check"
+        )
+        log_activity(
+            f"⚠ Syntax checker error (non-blocking): {e}", "warning"
+        )
+    # ─── END SYNTAX CHECK GATE ───────────────────────────────────────────────
+
+    # STEP 6 — Analyze diff and generate semantic commit plan
     try:
         diff_analysis = DiffAnalyzer().analyze(diff, [])
 
@@ -205,7 +270,7 @@ def commit_cycle(force: bool = False) -> bool:
             f"commit_cycle: {len(groups)} group(s), "
             f"{len(commits)} commit(s) planned"
         )
-        
+
         used_fallback = any(c.get("message_source") == "fallback" for c in commits)
 
     except Exception as e:
@@ -218,7 +283,7 @@ def commit_cycle(force: bool = False) -> bool:
         }]
         used_fallback = True
 
-    # STEP 6 — Commit
+    # STEP 7 — Commit
     committed_count = 0
     last_hash = None
     last_message = None
@@ -240,7 +305,7 @@ def commit_cycle(force: bool = False) -> bool:
     last_hash = commit_hash
     last_message = primary_message
 
-    # STEP 7 — Update state after successful commit
+    # STEP 8 — Update state after successful commit
     with _lock:
         state["last_commit"] = last_message
         state["last_commit_time"] = datetime.datetime.now().isoformat()
@@ -255,7 +320,7 @@ def commit_cycle(force: bool = False) -> bool:
         f"({'fallback' if used_fallback else 'LLM'}) — {primary_message!r}"
     )
 
-    # STEP 8 — Run amend loop if LLM is now available
+    # STEP 9 — Run amend loop if LLM is now available
     if used_fallback:
         logger.debug("Skipping amend loop — LLM unavailable this cycle")
     else:
@@ -268,7 +333,7 @@ def commit_cycle(force: bool = False) -> bool:
         except Exception as e:
             logger.error(f"Amend loop error: {e}")
 
-    # STEP 9 — Auto-push to origin (best-effort, non-blocking)
+    # STEP 10 — Auto-push to origin (best-effort, non-blocking)
     try:
         push_ok = ops.push()
         if push_ok:
@@ -283,7 +348,7 @@ def commit_cycle(force: bool = False) -> bool:
         logger.error(f"commit_cycle: auto-push exception: {e}")
         log_activity(f"Auto-push error: {e}", "warning")
 
-    # STEP 10 — Write status file for extension fallback
+    # STEP 11 — Write status file for extension fallback
     log_activity(
         f"Auto-commit: {commit_hash} — {primary_message}"
         + (" [fallback]" if used_fallback else "")
