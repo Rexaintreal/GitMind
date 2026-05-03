@@ -129,7 +129,7 @@ Pull requests are welcome. If you find a bug or want to request a feature, open 
 
 GitMind was built in 24 hours at **Hack4Good**, a hackathon hosted at [CubiSpace](https://cubispace.in), Lucknow on May 2–3, 2026. Four people, one night, zero auto-commits before it existed.
 
-Demo video: [Watch on Google Drive](#)
+Demo video: [Watch on Google Drive](https://drive.google.com/file/d/1f1bnoXisNSS_fKuJVKIQ3HPxb5I6m7wK/view?usp=drive_link)
 
 Full project documentation and design notes are available on Notion:
 [https://www.notion.so/GitMind-e37ce3703abb4e058ad92b513bce62be](https://www.notion.so/GitMind-e37ce3703abb4e058ad92b513bce62be)
